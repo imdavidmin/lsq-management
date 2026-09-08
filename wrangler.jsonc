@@ -1,0 +1,61 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lsq-site-operations",
+  "main": "server/src/index.ts",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  // Serves built SPA (web/dist); Worker owns /api/*. Build web before deploy.
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "./web/dist",
+    "not_found_handling": "single-page-application"
+  },
+  "vars": {
+    // Inbound ticket address domain: <ticketId>@EMAIL_DOMAIN
+    "EMAIL_DOMAIN": "lansburysquare.co.uk",
+    // Notifications/OTP sender; board mailbox for reports/chases.
+    "MAIL_FROM": "ops@lansburysquare.co.uk",
+    "BOARD_EMAIL": "board@lansburysquare.co.uk",
+    // Day of month the monthly board report fires (tracks the meeting schedule,
+    // not month-end). Clamped to the last day in shorter months.
+    "REPORT_DAY_OF_MONTH": "20"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lsq",
+      "database_id": "REPLACE_WITH_D1_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // No Workers AI binding here: this Worker does no AI. Ticket categories are
+  // chosen by the creator (or left for an agent); the only AI use is inbound
+  // email summarisation, which lives in the separate `lsq-ai` Worker.
+  "unsafe": {
+    "bindings": [
+      // Native rate limiter: 10 hits / 60s per key. Keys are `ip:<addr>`,
+      // `mail:<email>` (request), `vrf:<addr>` (verify). period must be 10|60.
+      {
+        "name": "OTP_LIMIT",
+        "type": "ratelimit",
+        "namespace_id": "1001",
+        "simple": { "limit": 10, "period": 60 }
+      },
+      // Lax global per-IP cap (billing/DoS backstop) applied to every endpoint.
+      {
+        "name": "API_LIMIT",
+        "type": "ratelimit",
+        "namespace_id": "1002",
+        "simple": { "limit": 300, "period": 60 }
+      }
+    ]
+  },
+  "triggers": {
+    // Daily 02:00 UTC: chase pass + monthly board report on REPORT_DAY_OF_MONTH.
+    "crons": ["0 2 * * *"]
+  }
+  // Secret (set via `wrangler secret put MAILERSEND_API_KEY`): MAILERSEND_API_KEY
+  // Inbound email is NOT handled here — it routes to the separate `lsq-email`
+  // Worker (see /email/wrangler.jsonc), which queues to `lsq-ai` for processing.
+}

@@ -1,0 +1,20 @@
+# dependencies
+node_modules
+
+# secrets / local env
+.dev.vars
+.env
+.env.*
+
+# wrangler / cloudflare local state
+.wrangler
+
+# build output
+dist
+web/dist
+
+# logs
+*.log
+
+# os / editor
+.DS_Store

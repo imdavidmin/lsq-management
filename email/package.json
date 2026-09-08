@@ -1,0 +1,10 @@
+{
+  "name": "@lsq/email",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240909.0",
+    "wrangler": "^3.80.0"
+  }
+}

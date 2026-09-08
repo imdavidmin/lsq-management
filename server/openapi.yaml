@@ -1,0 +1,1167 @@
+openapi: 3.1.0
+info:
+  title: LSQ Site Operations API
+  version: 0.1.0
+  description: >
+    Board-owned site-operations + performance-scoring API for Lansbury Square.
+    All HTTP endpoints below are served by the one `server` Worker, grouped by
+    segment (tag). See docs/api.md for the route map and docs/architecture.md for
+    design. Inbound email runs as two separate event-triggered Workers (`email`,
+    `ai`) plus the cron on `server` — no HTTP surface, so not described here.
+
+    Auth: all endpoints except the `auth` login pair require a `session` cookie
+    (D17). Authorization is scoped RBAC (D18) — the permission named per
+    operation must be carried by one of the caller's grants whose scope covers
+    the target resource.
+servers:
+  # API is mounted under /api on the SAME origin as the frontend (served as the
+  # server Worker's static assets). The API + cron are one Worker; inbound email
+  # is separate (email + ai Workers, D20). To split the API onto an api.*
+  # subdomain, drop the /api prefix in app.ts and change this back.
+  - url: https://lansburysquare.co.uk/api
+    description: Production
+
+tags:
+  - name: auth
+    description: Passwordless OTP login + session (server segment)
+  - name: tickets
+    description: Tickets and their event timeline (server segment)
+  - name: directory
+    description: Accounts, grants, roles, buildings/units, orgs, senders (server segment)
+  - name: scoring
+    description: Performance fee, metric config/values, reports (server segment)
+  - name: engagement
+    description: Surveys and site information (server segment)
+
+security:
+  - sessionCookie: []
+
+paths:
+  # ---------------------------------------------------------------- auth ---
+  /auth/otp/request:
+    post:
+      tags: [auth]
+      summary: Request a login code
+      security: []
+      description: Always responds 204 whether or not the email exists (no enumeration).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        # Always 204 — even when rate-limited — so the endpoint is
+        # indistinguishable whether or not the email exists (no enumeration;
+        # over-limit is silently dropped, see docs/security.md).
+        "204": { description: Code sent if the email maps to an active account }
+  /auth/otp/verify:
+    post:
+      tags: [auth]
+      summary: Verify a login code and open a session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email: { type: string, format: email }
+                code: { type: string, pattern: "^[0-9]{6}$" }
+      responses:
+        "200":
+          description: Session cookie set
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: httpOnly, Secure, SameSite=Lax session cookie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Identity" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { description: Invalid, expired, or already-used code }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: End the current session
+      responses:
+        "204": { description: Session deleted }
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Current identity, grants and effective permissions
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Identity" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ------------------------------------------------------------- tickets ---
+  /tickets:
+    get:
+      tags: [tickets]
+      summary: List tickets visible to the caller
+      description: Filtered by the caller's grants (permission ticket:read).
+      parameters:
+        - {
+            in: query,
+            name: status,
+            schema: { $ref: "#/components/schemas/TicketStatus" },
+          }
+        - { in: query, name: category, schema: { type: string } }
+        - { in: query, name: building_id, schema: { type: integer } }
+        - { in: query, name: unit_id, schema: { type: integer } }
+        - {
+            in: query,
+            name: mine,
+            schema: { type: boolean },
+            description: Only tickets I created,
+          }
+        - {
+            in: query,
+            name: page,
+            schema: { type: integer, default: 1, minimum: 1 },
+          }
+        - {
+            in: query,
+            name: per_page,
+            schema: { type: integer, default: 25, maximum: 100 },
+          }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/Ticket"
+                        - type: object
+                          properties:
+                            events:
+                              {
+                                type: array,
+                                items: { $ref: "#/components/schemas/Event" },
+                              }
+                  page: { type: integer }
+                  total: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [tickets]
+      summary: Create a ticket (UI only)
+      description: Creator picks the category (or leaves it for an agent); id becomes the email address.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TicketCreate" }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /tickets/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    get:
+      tags: [tickets]
+      summary: Ticket detail with timeline
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Ticket"
+                  - type: object
+                    properties:
+                      events:
+                        {
+                          type: array,
+                          items: { $ref: "#/components/schemas/Event" },
+                        }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [tickets]
+      summary: Update status, category (reassign, UJ-06) or flags
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { $ref: "#/components/schemas/TicketStatus" }
+                category: { type: string }
+                needs_contractor: { type: boolean }
+                is_duplicate: { type: boolean }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /tickets/{id}/events:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    get:
+      tags: [tickets]
+      summary: Ticket event timeline
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                { type: array, items: { $ref: "#/components/schemas/Event" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [tickets]
+      summary: Add a comment / update (UI, UJ-02)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ----------------------------------------------------------- directory ---
+  /accounts:
+    get:
+      tags: [directory]
+      summary: List accounts (minimised)
+      description: >
+        GDPR data-minimisation (docs/gdpr.md): returns name, active status, role
+        keys and the coarse building(s) a person is associated with — **no email
+        and no exact unit**. Those are reveal-gated on GET /accounts/{id}. Writes
+        one `list account` row to the read-access audit log.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                { type: array, items: { $ref: "#/components/schemas/AccountSummary" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [directory]
+      summary: Create / invite an account
+      description: >
+        Creates the account and emails an invitation. Activation is the
+        passwordless OTP flow (docs/authentication.md) — the email points the
+        recipient at sign-in, no separate token. If `unit_id` is given, a
+        `resident`-role grant scoped to that unit is created, associating the
+        person with their household.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name]
+              properties:
+                email: { type: string, format: email }
+                name: { type: string }
+                unit_id:
+                  type: integer
+                  nullable: true
+                  description: Resident's unit; creates a resident grant when present.
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+        "409": { description: Email already exists }
+  /accounts/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    get:
+      tags: [directory]
+      summary: Account detail, with reveal-gated PII
+      description: >
+        Returns the minimised record by default (name, active, non-unit grants).
+        `?reveal=email,units` unmasks the named PII: `email` adds the address,
+        `units` adds the household-identifying unit-scoped grants. Every call
+        writes a `view account` row to the read-access audit log recording which
+        fields were revealed (docs/gdpr.md). RBAC scope remains the access gate;
+        reveal only controls masking + what is audited.
+      parameters:
+        - in: query
+          name: reveal
+          description: Comma-separated PII fields to unmask and audit.
+          schema:
+            type: string
+            example: email,units
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [directory]
+      summary: Rename or (de)activate an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                active: { type: boolean }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+  /accounts/{id}/grants:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    get:
+      tags: [directory]
+      summary: Grants held by an account
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                { type: array, items: { $ref: "#/components/schemas/Grant" } }
+  /grants:
+    post:
+      tags: [directory]
+      summary: Assign a role scoped to a resource
+      description: Ticket-scoped grants provide per-ticket sharing (UJ-08).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GrantCreate" }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Grant" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /grants/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    delete:
+      tags: [directory]
+      summary: Revoke a grant
+      responses:
+        "204": { description: Revoked }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /roles:
+    get:
+      tags: [directory]
+      summary: List roles and their permissions
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                { type: array, items: { $ref: "#/components/schemas/Role" } }
+    post:
+      tags: [directory]
+      summary: Create a role
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, name]
+              properties:
+                key: { type: string }
+                name: { type: string }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Role" }
+  /roles/{key}/permissions:
+    parameters:
+      - { in: path, name: key, required: true, schema: { type: string } }
+    put:
+      tags: [directory]
+      summary: Replace a role's permission set
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [permissions]
+              properties:
+                permissions: { type: array, items: { type: string } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Role" }
+  /buildings:
+    get:
+      tags: [directory]
+      summary: List buildings
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                {
+                  type: array,
+                  items: { $ref: "#/components/schemas/Building" },
+                }
+    post:
+      tags: [directory]
+      summary: Add a building
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties: { name: { type: string } }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Building" }
+  /buildings/{id}/units:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    get:
+      tags: [directory]
+      summary: Units in a building
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                { type: array, items: { $ref: "#/components/schemas/Unit" } }
+  /units:
+    post:
+      tags: [directory]
+      summary: Add a unit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [building_id, label]
+              properties:
+                building_id: { type: integer }
+                label: { type: string }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Unit" }
+  /organizations:
+    get:
+      tags: [directory]
+      summary: List organizations (agent + contractors)
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                {
+                  type: array,
+                  items: { $ref: "#/components/schemas/Organization" },
+                }
+    post:
+      tags: [directory]
+      summary: Add an organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrganizationCreate" }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Organization" }
+  /organizations/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    patch:
+      tags: [directory]
+      summary: Edit an organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrganizationCreate" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Organization" }
+  /senders:
+    get:
+      tags: [directory]
+      summary: List sender rules
+      description: "`?status=new` returns the unknown-sender queue (UJ-07)."
+      parameters:
+        - {
+            in: query,
+            name: status,
+            schema: { type: string, enum: [new, ignored, linked] },
+          }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                { type: array, items: { $ref: "#/components/schemas/Sender" } }
+    post:
+      tags: [directory]
+      summary: Add an email/domain → organization rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SenderCreate" }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sender" }
+  /senders/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    patch:
+      tags: [directory]
+      summary: Link an unknown sender to an org, or ignore it (UJ-07)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                org_id: { type: integer, nullable: true }
+                status: { type: string, enum: [new, ignored, linked] }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sender" }
+    delete:
+      tags: [directory]
+      summary: Remove a sender rule
+      responses:
+        "204": { description: Removed }
+
+  # ------------------------------------------------------------- scoring ---
+  /score:
+    get:
+      tags: [scoring]
+      summary: Live performance fee and breakdown
+      description: Computed on-demand (UJ-10). No caching.
+      parameters:
+        - {
+            in: query,
+            name: year,
+            schema: { type: integer },
+            description: Service year; defaults to current,
+          }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Score" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /metrics:
+    get:
+      tags: [scoring]
+      summary: Metric configuration
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                { type: array, items: { $ref: "#/components/schemas/Metric" } }
+  /metrics/{key}:
+    parameters:
+      - { in: path, name: key, required: true, schema: { type: string } }
+    patch:
+      tags: [scoring]
+      summary: Edit weight / mode / threshold / active (D6)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                weight: { type: number }
+                mode: { $ref: "#/components/schemas/MetricMode" }
+                threshold: { type: number, nullable: true }
+                active: { type: boolean }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Metric" }
+  /metric-values:
+    get:
+      tags: [scoring]
+      summary: Manual/computed metric values
+      parameters:
+        - { in: query, name: year, schema: { type: integer } }
+        - { in: query, name: metric, schema: { type: string } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                {
+                  type: array,
+                  items: { $ref: "#/components/schemas/MetricValue" },
+                }
+    post:
+      tags: [scoring]
+      summary: Enter a manual value, or dispute (superseding insert)
+      description: >
+        Admin/agent manual entry (UJ-15) and board dispute (UJ-08) are the same
+        operation — a new row; latest per (metric, year) wins.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MetricValueCreate" }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetricValue" }
+  /metric-values/{id}/attest:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    patch:
+      tags: [scoring]
+      summary: Board sign-off on a value (UJ-15)
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetricValue" }
+  /reports/monthly:
+    get:
+      tags: [scoring]
+      summary: Monthly performance report (UJ-11)
+      description: Same generator the scheduler runs on the configured day (REPORT_DAY_OF_MONTH).
+      parameters:
+        - {
+            in: query,
+            name: month,
+            required: true,
+            schema: { type: string, pattern: "^[0-9]{4}-[0-9]{2}$" },
+          }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MonthlyReport" }
+
+  # ---------------------------------------------------------- engagement ---
+  /surveys:
+    get:
+      tags: [engagement]
+      summary: List surveys
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                { type: array, items: { $ref: "#/components/schemas/Survey" } }
+    post:
+      tags: [engagement]
+      summary: Create a survey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service_year]
+              properties:
+                service_year: { type: integer }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Survey" }
+  /surveys/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    patch:
+      tags: [engagement]
+      summary: Open or close a survey (UJ-14)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                closed: { type: boolean }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Survey" }
+  /surveys/{id}/responses:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    get:
+      tags: [engagement]
+      summary: View responses (admin, UJ-14)
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                {
+                  type: array,
+                  items: { $ref: "#/components/schemas/SurveyResponse" },
+                }
+    post:
+      tags: [engagement]
+      summary: Submit a response (resident, one per UNIT, UJ-13)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answers]
+              properties:
+                unit_id:
+                  type: integer
+                  description: >-
+                    Unit the vote is cast for. Optional when the caller has
+                    exactly one eligible unit; required when they have several.
+                answers:
+                  type: object
+                  additionalProperties:
+                    { type: integer, minimum: 1, maximum: 5 }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SurveyResponse" }
+        "409": { description: This unit has already responded to this survey }
+  /surveys/{id}/responses/{rid}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+      - { in: path, name: rid, required: true, schema: { type: integer } }
+    patch:
+      tags: [engagement]
+      summary: Flag or unflag a response as an outlier (UJ-14)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [is_outlier]
+              properties: { is_outlier: { type: boolean } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SurveyResponse" }
+  /site-info:
+    get:
+      tags: [engagement]
+      summary: Site information (contact details etc.) as markdown
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteInfo" }
+    put:
+      tags: [engagement]
+      summary: Replace the site information markdown (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value]
+              properties: { value: { type: string } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteInfo" }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Opaque server-side session token (D17); httpOnly, Secure, SameSite=Lax.
+
+  responses:
+    BadRequest:
+      description: Invalid request body or parameters
+      content:
+        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Unauthorized:
+      description: Missing or invalid session
+      content:
+        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Forbidden:
+      description: No grant carries the required permission for this resource
+      content:
+        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    NotFound:
+      description: Resource not found (or not visible to the caller)
+      content:
+        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    RateLimited:
+      description: Too many requests
+      content:
+        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        message: { type: string }
+      required: [error]
+
+    Identity:
+      type: object
+      properties:
+        account: { $ref: "#/components/schemas/Account" }
+        grants: { type: array, items: { $ref: "#/components/schemas/Grant" } }
+        permissions:
+          type: array
+          items: { type: string }
+          description: Flattened permission set across all grants, for the UI.
+
+    Account:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        name: { type: string }
+        active: { type: boolean }
+
+    # Minimised directory row (GDPR): identity + coarse association only. No
+    # email, no exact unit — see GET /accounts.
+    AccountSummary:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        active: { type: boolean }
+        roles:
+          type: array
+          items: { type: string }
+          description: Distinct role keys held across the account's grants.
+        buildings:
+          type: array
+          items: { type: string }
+          description: Coarse building names the account is associated with (from building- and unit-scoped grants).
+
+    # Account detail. email is present only when reveal=email; unit-scoped grants
+    # are included only when reveal=units. Non-unit grants are always present.
+    AccountDetail:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        active: { type: boolean }
+        email: { type: string, format: email, description: Present only when reveal=email }
+        grants: { type: array, items: { $ref: "#/components/schemas/Grant" } }
+        units:
+          type: array
+          items: { type: string }
+          description: Resolved unit labels; present only when reveal=units.
+
+    Role:
+      type: object
+      properties:
+        key: { type: string }
+        name: { type: string }
+        permissions: { type: array, items: { type: string } }
+
+    ScopeType:
+      type: string
+      enum: [estate, building, unit, organization, ticket]
+
+    Grant:
+      type: object
+      properties:
+        id: { type: integer }
+        account_id: { type: integer }
+        role_key: { type: string }
+        scope_type: { $ref: "#/components/schemas/ScopeType" }
+        scope_id:
+          {
+            type: integer,
+            nullable: true,
+            description: NULL only when scope_type=estate,
+          }
+    GrantCreate:
+      type: object
+      required: [account_id, role_key, scope_type]
+      properties:
+        account_id: { type: integer }
+        role_key: { type: string }
+        scope_type: { $ref: "#/components/schemas/ScopeType" }
+        scope_id: { type: integer, nullable: true }
+
+    Building:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+    Unit:
+      type: object
+      properties:
+        id: { type: integer }
+        building_id: { type: integer }
+        label: { type: string }
+
+    Organization:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        kind: { type: string, enum: [agent, contractor] }
+    OrganizationCreate:
+      type: object
+      required: [name, kind]
+      properties:
+        name: { type: string }
+        kind: { type: string, enum: [agent, contractor] }
+
+    Sender:
+      type: object
+      properties:
+        id: { type: integer }
+        match_type: { type: string, enum: [email, domain] }
+        match_value: { type: string }
+        org_id:
+          { type: integer, nullable: true, description: NULL = unknown/pending }
+        status: { type: string, enum: [new, ignored, linked] }
+        hit_count: { type: integer }
+        first_seen: { type: string, format: date-time }
+        last_seen: { type: string, format: date-time }
+    SenderCreate:
+      type: object
+      required: [match_type, match_value, org_id]
+      properties:
+        match_type: { type: string, enum: [email, domain] }
+        match_value: { type: string }
+        org_id: { type: integer }
+
+    TicketStatus:
+      type: string
+      enum: [open, pending_3rd_party, resolved, closed]
+    Ticket:
+      type: object
+      properties:
+        id:
+          {
+            type: integer,
+            description: Also the local part of <id>@lansburysquare.co.uk,
+          }
+        title: { type: string }
+        building_id: { type: integer, nullable: true }
+        unit_id: { type: integer, nullable: true }
+        created_by: { type: integer, nullable: true }
+        category: { type: string, nullable: true }
+        classified_by: { type: string, enum: [resident, agent, board, admin] }
+        needs_contractor: { type: boolean }
+        is_duplicate: { type: boolean }
+        status: { $ref: "#/components/schemas/TicketStatus" }
+        created_at: { type: string, format: date-time }
+        resolved_at: { type: string, format: date-time, nullable: true }
+        closed_at: { type: string, format: date-time, nullable: true }
+    TicketCreate:
+      type: object
+      required: [title, description]
+      properties:
+        title: { type: string }
+        description:
+          { type: string, description: Becomes the first event on the ticket }
+        category:
+          {
+            type: string,
+            nullable: true,
+            description: Creator's chosen category; omit to leave unclassified for an agent,
+          }
+        building_id: { type: integer, nullable: true }
+        unit_id: { type: integer, nullable: true }
+
+    Event:
+      type: object
+      properties:
+        id: { type: integer }
+        subject_type:
+          {
+            type: string,
+            description: "Polymorphic subject kind, e.g. ticket, metric_value",
+          }
+        subject_id:
+          { type: integer, nullable: true, description: Id within subject_type; NULL = system-wide }
+        at: { type: string, format: date-time }
+        actor_id: { type: integer, nullable: true }
+        actor_email: { type: string, nullable: true }
+        actor_role: { type: string, nullable: true }
+        type:
+          {
+            type: string,
+            enum: [comment, classify, status, clock, attest, chase],
+          }
+        from_value: { type: string, nullable: true }
+        to_value: { type: string, nullable: true }
+        body: { type: string, nullable: true }
+        source: { type: string, enum: [ui, email, ai, system] }
+        ai_processed: { type: boolean }
+        ai_summary: { type: string, nullable: true }
+
+    MetricMode:
+      type: string
+      enum: [binary, proportional]
+    Metric:
+      type: object
+      properties:
+        key: { type: string }
+        domain: { type: string, description: Display label only }
+        weight:
+          {
+            type: number,
+            description: Effective weight; all metrics sum to 1.0,
+          }
+        mode: { $ref: "#/components/schemas/MetricMode" }
+        threshold: { type: number, nullable: true }
+        source: { type: string, enum: [auto, manual, survey] }
+        active: { type: boolean }
+    MetricValue:
+      type: object
+      properties:
+        id: { type: integer }
+        metric_key: { type: string }
+        service_year: { type: integer }
+        value: { type: number, description: Raw measured value }
+        result: { type: number, description: 0..1 after mode+threshold }
+        entered_by: { type: integer, nullable: true }
+        attested_by: { type: integer, nullable: true }
+        computed_at: { type: string, format: date-time }
+        notes: { type: string, nullable: true }
+    MetricValueCreate:
+      type: object
+      required: [metric_key, service_year, value]
+      properties:
+        metric_key: { type: string }
+        service_year: { type: integer }
+        value: { type: number }
+        notes: { type: string }
+    Score:
+      type: object
+      description: On-demand computed fee projection (UJ-10).
+      properties:
+        service_year: { type: integer }
+        projected_fee_ratio:
+          { type: number, description: Σ(weight × result), 0..1 }
+        domains:
+          type: array
+          items:
+            type: object
+            properties:
+              domain: { type: string }
+              weight:
+                {
+                  type: number,
+                  description: Derived SUM(weight) of its metrics,
+                }
+              result:
+                { type: number, description: Weighted domain result, 0..1 }
+              metrics:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    key: { type: string }
+                    weight: { type: number }
+                    value: { type: number, nullable: true }
+                    result: { type: number, nullable: true }
+                    pending:
+                      { type: boolean, description: e.g. survey <50 responses }
+    MonthlyReport:
+      type: object
+      properties:
+        month: { type: string, example: "2026-08" }
+        score: { $ref: "#/components/schemas/Score" }
+        narrative:
+          type: object
+          properties:
+            strong: { type: array, items: { type: string } }
+            weak: { type: array, items: { type: string } }
+            trend: { type: string, description: vs prior month }
+
+    Survey:
+      type: object
+      properties:
+        id: { type: integer }
+        service_year: { type: integer }
+        opened_at: { type: string, format: date-time }
+        closed_at: { type: string, format: date-time, nullable: true }
+        response_count: { type: integer }
+        non_outlier_count: { type: integer }
+        scoring_gate_met:
+          { type: boolean, description: ">=50 non-outlier responses" }
+    # Anonymous by design — no account link. Legitimacy is tracked separately in
+    # survey_ballots (one-per-resident). See docs/gdpr.md.
+    SurveyResponse:
+      type: object
+      properties:
+        id: { type: integer }
+        survey_id: { type: integer }
+        answers: { type: object, additionalProperties: { type: integer } }
+        is_outlier: { type: boolean }
+        submitted_on: { type: string, format: date }
+
+    SiteInfo:
+      type: object
+      properties:
+        value: { type: string, description: Markdown body }
+        updated_at: { type: string, format: date-time, nullable: true }

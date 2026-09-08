@@ -1,0 +1,29 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "lsq-ai",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "lsq", "database_id": "REPLACE_WITH_D1_ID" }
+  ],
+  "r2_buckets": [
+    { "binding": "RAW", "bucket_name": "lsq-inbound-raw" }
+  ],
+  // Workers AI for email summarisation (UJ-16). Consumer degrades to no-summary
+  // if the binding/model is unavailable — the comment event is still recorded.
+  "ai": { "binding": "AI" },
+  // Consumes the inbound queue; failures retry, then dead-letter after 3 tries.
+  "queues": {
+    "consumers": [
+      {
+        "queue": "lsq-inbound",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "lsq-inbound-dlq"
+      }
+    ]
+  }
+}

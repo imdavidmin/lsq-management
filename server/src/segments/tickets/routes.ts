@@ -1,0 +1,126 @@
+import { Hono } from "hono";
+import { z } from "zod";
+import type { AppContext } from "../../env";
+import { body, idParam } from "../../lib/validate";
+import { badRequest, notFound } from "../../lib/errors";
+import { requireSession } from "../../middleware/session";
+import { requirePermission, readableGrants } from "../../middleware/rbac";
+import type { ScopeRef } from "../../lib/scope";
+import { STATUSES } from "../../../../common/tickets";
+import {
+  addComment,
+  createTicket,
+  getTicket,
+  listTickets,
+  patchTicket,
+  primaryRole,
+  ticketEvents,
+  type Ticket,
+  type TicketEvent,
+} from "./service";
+
+// Scope of an existing ticket, resolved from the path id.
+const ticketScope = (c: any): ScopeRef => ({ type: "ticket", id: idParam(c) });
+
+// Numeric-flag columns → booleans to match openapi component schemas.
+const serializeTicket = (t: Ticket) => ({
+  ...t,
+  needs_contractor: !!t.needs_contractor,
+  is_duplicate: !!t.is_duplicate,
+});
+const serializeEvent = (e: TicketEvent) => ({ ...e, ai_processed: !!e.ai_processed });
+
+const createSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().min(1),
+  category: z.string().min(1).optional(),
+  building_id: z.number().int().nullish(),
+  unit_id: z.number().int().nullish(),
+});
+const patchSchema = z
+  .object({
+    status: z.enum(STATUSES),
+    category: z.string().min(1),
+    needs_contractor: z.boolean(),
+    is_duplicate: z.boolean(),
+  })
+  .partial();
+const commentSchema = z.object({ body: z.string().min(1) });
+const listSchema = z.object({
+  status: z.enum(STATUSES).optional(),
+  category: z.string().optional(),
+  building_id: z.coerce.number().int().optional(),
+  unit_id: z.coerce.number().int().optional(),
+  // z.coerce.boolean() treats "false" as true; match only true/1.
+  mine: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true" || v === "1")),
+  page: z.coerce.number().int().min(1).default(1),
+  per_page: z.coerce.number().int().min(1).max(100).default(25),
+});
+
+export const tickets = new Hono<AppContext>();
+tickets.use("*", requireSession);
+
+// GET /tickets — visible to caller via ticket:read grants, filtered + paged.
+tickets.get("/", requirePermission("ticket:read"), async (c) => {
+  const parsed = listSchema.safeParse(c.req.query());
+  if (!parsed.success) return badRequest(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+  const grants = await readableGrants(c, "ticket:read");
+  const account = c.get("account");
+  const res = await listTickets(c.env, grants, account.id, parsed.data);
+  const data = res.data.map((t) => ({ ...serializeTicket(t), events: t.events.map(serializeEvent) }));
+  return c.json({ data, page: res.page, total: res.total });
+});
+
+// POST /tickets — scope is the target unit/building (else estate for communal).
+// The scope resolver and handler both read c.req.json(); Hono caches it.
+tickets.post(
+  "/",
+  requirePermission("ticket:create", async (c): Promise<ScopeRef> => {
+    const b = (await c.req.json().catch(() => ({}))) as {
+      unit_id?: number | null;
+      building_id?: number | null;
+    };
+    if (b?.unit_id != null) return { type: "unit", id: b.unit_id };
+    if (b?.building_id != null) return { type: "building", id: b.building_id };
+    return { type: "estate", id: null };
+  }),
+  async (c) => {
+    const input = await body(c, createSchema);
+    const account = c.get("account");
+    const t = await createTicket(c.env, account.id, primaryRole(c.get("grants")), input);
+    return c.json(serializeTicket(t), 201);
+  }
+);
+
+tickets.get("/:id", requirePermission("ticket:read", ticketScope), async (c) => {
+  const t = await getTicket(c.env, idParam(c));
+  if (!t) notFound("no such ticket");
+  const events = await ticketEvents(c.env, t!.id);
+  return c.json({ ...serializeTicket(t!), events: events.map(serializeEvent) });
+});
+
+tickets.get("/:id/events", requirePermission("ticket:read", ticketScope), async (c) => {
+  const events = await ticketEvents(c.env, idParam(c));
+  return c.json(events.map(serializeEvent));
+});
+
+tickets.patch("/:id", requirePermission("ticket:update", ticketScope), async (c) => {
+  const p = await body(c, patchSchema);
+  const t = await getTicket(c.env, idParam(c));
+  if (!t) notFound("no such ticket");
+  const account = c.get("account");
+  const updated = await patchTicket(c.env, t!, account.id, primaryRole(c.get("grants")), p);
+  return c.json(serializeTicket(updated));
+});
+
+tickets.post("/:id/events", requirePermission("ticket:comment", ticketScope), async (c) => {
+  const { body: text } = await body(c, commentSchema);
+  const t = await getTicket(c.env, idParam(c));
+  if (!t) notFound("no such ticket");
+  const account = c.get("account");
+  const ev = await addComment(c.env, t!.id, account.id, primaryRole(c.get("grants")), text);
+  return c.json(serializeEvent(ev), 201);
+});

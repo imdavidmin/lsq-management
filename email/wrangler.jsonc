@@ -1,0 +1,22 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "lsq-email",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  // Shared D1 (same database as the server) — read-only here for the ticket check.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "lsq", "database_id": "REPLACE_WITH_D1_ID" }
+  ],
+  // Raw inbound messages staged here; the ai Worker reads then deletes them.
+  "r2_buckets": [
+    { "binding": "RAW", "bucket_name": "lsq-inbound-raw" }
+  ],
+  // Produces onto the inbound queue consumed by the ai Worker.
+  "queues": {
+    "producers": [{ "queue": "lsq-inbound", "binding": "INBOUND" }]
+  }
+  // Email Routing: point the catch-all *@lansburysquare.co.uk at THIS Worker
+  // in the Cloudflare dashboard (Email Routing → Email Workers).
+}

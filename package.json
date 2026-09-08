@@ -1,0 +1,24 @@
+{
+  "name": "lsq-site-operations",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["server", "email", "ai", "web"],
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:all": "(trap 'kill 0' EXIT; wrangler dev & npm --workspace web run dev)",
+    "deploy": "npm run deploy:server && npm run deploy:email && npm run deploy:ai",
+    "deploy:server": "wrangler deploy",
+    "deploy:email": "wrangler deploy -c email/wrangler.jsonc",
+    "deploy:ai": "wrangler deploy -c ai/wrangler.jsonc",
+    "seed:dev": "wrangler d1 execute DB --local --file=server/dev-seed.sql",
+    "migrate:local": "wrangler d1 migrations apply DB --local",
+    "migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p server/tsconfig.json && tsc -p email/tsconfig.json && tsc -p ai/tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

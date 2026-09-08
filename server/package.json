@@ -1,0 +1,17 @@
+{
+  "name": "@lsq/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "hono": "^4.6.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.5.0",
+    "@cloudflare/workers-types": "^4.20240909.0",
+    "vitest": "^2.1.0",
+    "wrangler": "^3.80.0",
+    "yaml": "^2.5.0"
+  }
+}
