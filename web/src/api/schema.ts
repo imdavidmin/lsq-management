@@ -450,7 +450,7 @@ export interface paths {
         put?: never;
         /**
          * Record a manual SLA marker (D21)
-         * @description Permission ticket:update. Only `attended` (contractor attended site) is entered by hand; `enquiry_sent` and `contractor_no_reply` are inferred by the system. The notes go in the event body.
+         * @description Permission ticket:update. Only `attended` (contractor attended site) is entered by hand; `enquiry_sent` is inferred by the system. The notes go in the event body.
          */
         post: {
             parameters: {
@@ -1682,7 +1682,7 @@ export interface paths {
         };
         /**
          * Scoring settings
-         * @description Permission config:read. Only the scoring keys (service_year_start, contractor_reply_days); site_info has its own route.
+         * @description Permission config:read. Only the scoring keys (service_year_start); site_info has its own route.
          */
         get: {
             parameters: {
@@ -1716,21 +1716,21 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                key: "service_year_start" | "contractor_reply_days";
+                key: "service_year_start";
             };
             cookie?: never;
         };
         get?: never;
         /**
          * Set a scoring setting
-         * @description Permission config:manage. service_year_start is MM-DD; contractor_reply_days is a positive integer (working days).
+         * @description Permission config:manage. service_year_start is MM-DD.
          */
         put: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    key: "service_year_start" | "contractor_reply_days";
+                    key: "service_year_start";
                 };
                 cookie?: never;
             };

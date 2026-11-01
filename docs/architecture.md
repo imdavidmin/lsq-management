@@ -125,7 +125,8 @@ A single Cron Trigger does the only two things that need a timer:
 
 - **Chase pass (daily, UJ-12):** scan open tickets; for each stale (no update in
   N working days) or near/overdue deadline, append `events(type='chase')`
-  and notify the responsible party.
+  and notify the responsible party. It also emails the agents a list of SLA
+  instances due today. These reminders are not written as events (D24).
 - **Monthly report (configured day, UJ-11):** the daily pass checks whether
   today matches `REPORT_DAY_OF_MONTH` (clamped to the last day for short months)
   — not fixed to the 1st, because it tracks the board/agent meeting schedule,

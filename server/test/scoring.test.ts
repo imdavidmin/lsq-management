@@ -34,12 +34,9 @@ describe("scoring — seeded SLAs (D21)", () => {
 
   it("seeds the scoring settings into the config table", async () => {
     const { results } = await env.DB.prepare(
-      "SELECT key, value FROM config WHERE key IN ('service_year_start', 'contractor_reply_days') ORDER BY key"
+      "SELECT key, value FROM config WHERE key = 'service_year_start'"
     ).all<{ key: string; value: string }>();
-    expect(results).toEqual([
-      { key: "contractor_reply_days", value: "5" },
-      { key: "service_year_start", value: "08-01" },
-    ]);
+    expect(results).toEqual([{ key: "service_year_start", value: "08-01" }]);
   });
 });
 
@@ -99,15 +96,15 @@ describe("scoring — SLA + settings API", () => {
 
   it("settings: validated per key, unknown keys 404, residents read-only", async () => {
     const board = await login("cfg-board@lsq.test", "board", "estate", null);
-    const ok = await req("/api/config/contractor_reply_days", board.cookie, "PUT", { value: "3" });
-    expect(((await ok.json()) as any).value).toBe("3");
+    const ok = await req("/api/config/service_year_start", board.cookie, "PUT", { value: "09-01" });
+    expect(((await ok.json()) as any).value).toBe("09-01");
     expect((await req("/api/config/service_year_start", board.cookie, "PUT", { value: "13-01" })).status).toBe(400);
     expect((await req("/api/config/site_info", board.cookie, "PUT", { value: "x" })).status).toBe(404);
 
     const resident = await login("cfg-res@lsq.test", "resident", "unit", 101);
     const keys = ((await (await req("/api/config", resident.cookie)).json()) as any[]).map((e) => e.key);
-    expect(keys).toEqual(["contractor_reply_days", "service_year_start"]);
-    expect((await req("/api/config/contractor_reply_days", resident.cookie, "PUT", { value: "9" })).status).toBe(403);
+    expect(keys).toEqual(["service_year_start"]);
+    expect((await req("/api/config/service_year_start", resident.cookie, "PUT", { value: "08-01" })).status).toBe(403);
   });
 });
 
@@ -204,6 +201,14 @@ describe("SLA evaluator", () => {
     expect(ticketPasses([followUp], t, "2026-11-26T00:00Z")).toBe(false);
     expect(ticketPasses([followUp], t, "2026-11-23T00:00Z")).toBe(true); // running B excluded
     expect(outcomes({ ...followUp, repeats: 0 }, t, "2026-11-26T00:00Z")).toEqual([["met", 4]]);
+  });
+
+  it("chase silent contractor: any agent follow-up within 6 wd of each enquiry, early or not (trace 6)", () => {
+    const chase = def({ start_on: "marker", start_value: "enquiry_sent", budget_days: 6, repeats: 1 });
+    const enquiry = (at: string) => [ev(at, "agent"), ev(at, "agent", "marker", "enquiry_sent")]; // email to contractor
+    const t = ticket("2026-11-06T09:00Z", [...enquiry("2026-11-09T10:00Z"), ...enquiry("2026-11-12T10:00Z")]);
+    expect(outcomes(chase, t, "2026-11-19T00:00Z")).toEqual([["met", 3], ["running", 5]]); // early chase counts
+    expect(outcomes(chase, t, "2026-11-23T00:00Z")).toEqual([["met", 3], ["breached", 7]]);
   });
 
   it("a ticket passes a metric only if ALL its SLAs' finished instances are met", () => {

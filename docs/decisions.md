@@ -192,9 +192,9 @@ computed per request from `events` (D13) and never stored per ticket, so the
 reserved `clock` event type is unused. A metric's value is the share of tickets
 whose instances are **all** met. Signals the rubric needs that no action records
 today become `marker` events: `enquiry_sent` (inferred by the `ai` Worker when
-an agent emails a contractor with the ticket in CC), `contractor_no_reply`
-(injected by the daily cron after a configured number of working days), and
-`attended` (entered manually by the on-site team). SLA edits append `config`
+an agent emails a contractor with the ticket in CC), ~~`contractor_no_reply`
+(injected by the daily cron after a configured number of working days)~~
+(dropped, see D24), and `attended` (entered manually by the on-site team). SLA edits append `config`
 events on the spine. SLAs change only at service-year end; a mid-year edit
 re-scores the year, accepted. Scores cover only the current and previous
 service year (start date in the `config` table); the final figures are kept
@@ -231,3 +231,18 @@ end should cost the agent rather than flatter them. The dispute permission stops
 the measured party overwriting its own computed score, without a role check in
 code (D18).
 
+### D24 — Chasing a silent contractor is one 6-day SLA; reminders aren't events
+
+"Chase silent contractor" is `marker:enquiry_sent → event_by:staff`, 6 working
+days, repeating: after each enquiry the agent must touch the ticket again within
+6 working days. Every chase email to the contractor (ticket in CC) is itself a
+new `enquiry_sent`, so the thread can't go cold for more than 6 days. The
+`contractor_no_reply` marker, its cron pass and the `contractor_reply_days`
+setting are removed. Phone chases don't count unless the agent also emails.
+The daily cron emails the agents a list of SLA instances due today (running, at
+their budget), on working days only. It writes nothing to `events`.
+**Why:** before, the 6 days were split into 5 days of silence (a
+system-written marker) plus a 1-day window. A chase logged before day 5 by any
+means other than email didn't count. One SLA in the existing vocabulary is
+simpler, needs no evaluator change, and keeps derived state out of the audit
+spine (D13, D21). The reminder covers every SLA, not just this one.

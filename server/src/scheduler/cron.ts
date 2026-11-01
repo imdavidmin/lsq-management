@@ -1,6 +1,7 @@
 import type { Env } from "../env";
-import { all, one, run } from "../db/client";
-import { workingDaysBetween } from "../lib/workdays";
+import { all, run } from "../db/client";
+import { applies, instances, type SlaDef, type SlaEvent, type SlaTicket } from "../lib/sla";
+import { isWorkingDay, workingDaysBetween } from "../lib/workdays";
 import { sendMail } from "../segments/auth/mailer";
 
 // Chase a still-open ticket after this many working days with no update.
@@ -57,38 +58,45 @@ export async function chasePass(env: Env, now: Date): Promise<{ chased: number }
   return { chased: chased.length };
 }
 
-// D21: mark an open ticket's latest enquiry `contractor_no_reply` once
-// `contractor_reply_days` working days pass with no contractor event after it.
-// One marker per enquiry: a marker already after it skips the ticket.
-export async function noReplyPass(env: Env, now: Date): Promise<{ marked: number }> {
-  const days = Number((await one<{ value: string }>(env.DB, "SELECT value FROM config WHERE key = 'contractor_reply_days'"))?.value ?? 5);
-  const rows = await all<{ ticket_id: number; at: string }>(
-    env.DB,
-    `SELECT t.id AS ticket_id, e.at FROM tickets t
-       JOIN events e ON e.id = (
-         SELECT id FROM events WHERE subject_type = 'ticket' AND subject_id = t.id
-            AND type = 'marker' AND to_value = 'enquiry_sent'
-          ORDER BY at DESC, id DESC LIMIT 1)
-      WHERE t.status IN ('open', 'pending_3rd_party')
-        AND NOT EXISTS (
-          SELECT 1 FROM events x WHERE x.subject_type = 'ticket' AND x.subject_id = t.id
-             AND (x.at > e.at OR (x.at = e.at AND x.id > e.id))
-             AND (x.actor_role = 'contractor' OR (x.type = 'marker' AND x.to_value = 'contractor_no_reply')))`
-  );
+// D24: on working days, remind the agents of SLA instances due today (still
+// running, at their budget). A plain email — nothing is written to `events`.
+export async function reminderPass(env: Env, now: Date): Promise<{ due: number }> {
+  if (!isWorkingDay(now)) return { due: 0 };
   const nowIso = now.toISOString();
-  let marked = 0;
-  for (const r of rows) {
-    if (workingDaysBetween(r.at, nowIso) < days) continue;
-    await run(
+  const [slas, tickets, events, agents] = await Promise.all([
+    all<SlaDef & { name: string }>(env.DB, "SELECT * FROM slas WHERE active = 1 ORDER BY id"),
+    all<Omit<SlaTicket, "events"> & { id: number; title: string }>(
       env.DB,
-      `INSERT INTO events (subject_type, subject_id, at, actor_role, type, to_value, source)
-         VALUES ('ticket', ?, ?, 'system', 'marker', 'contractor_no_reply', 'system')`,
-      r.ticket_id,
-      nowIso
-    );
-    marked++;
+      "SELECT id, title, category, needs_contractor, created_at FROM tickets WHERE status IN ('open', 'pending_3rd_party') ORDER BY id"
+    ),
+    all<SlaEvent & { subject_id: number }>(
+      env.DB,
+      `SELECT e.subject_id, e.at, e.actor_role, e.type, e.to_value FROM events e
+         JOIN tickets t ON e.subject_type = 'ticket' AND e.subject_id = t.id
+        WHERE t.status IN ('open', 'pending_3rd_party') ORDER BY e.at, e.id`
+    ),
+    all<{ email: string }>(
+      env.DB,
+      "SELECT DISTINCT a.email FROM accounts a JOIN grants g ON g.account_id = a.id WHERE g.role_key = 'agent' AND a.active = 1"
+    ),
+  ]);
+
+  const due: string[] = [];
+  for (const t of tickets) {
+    const ticket = { ...t, events: events.filter((e) => e.subject_id === t.id) };
+    for (const s of slas.filter((s) => applies(s, ticket))) {
+      if (instances(s, ticket, nowIso).some((i) => i.outcome === "running" && i.days === s.budget_days)) {
+        due.push(`#${t.id} ${t.title}: ${s.name}`);
+      }
+    }
   }
-  return { marked };
+
+  if (due.length) {
+    for (const a of agents) {
+      await sendMail(env, { to: a.email, subject: `LSQ: ${due.length} SLA(s) due today`, text: due.join("\n") });
+    }
+  }
+  return { due: due.length };
 }
 
 // The day-of-month the monthly report fires, clamped to the month's last day
@@ -103,9 +111,9 @@ export function isReportDay(env: Env, now: Date): boolean {
   return now.getUTCDate() === reportDay(env, now);
 }
 
-// Daily entry (UJ-11/12, D21): no-reply markers and chase always; monthly report on the configured day.
+// Daily entry (UJ-11/12, D24): chase and SLA reminders always; monthly report on the configured day.
 export async function runScheduled(env: Env, now: Date): Promise<void> {
-  await noReplyPass(env, now);
+  await reminderPass(env, now);
   await chasePass(env, now);
   if (isReportDay(env, now)) {
     // TODO(phase 4): const report = await monthlyReport(env, prevMonth(now));

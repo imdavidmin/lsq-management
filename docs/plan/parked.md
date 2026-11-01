@@ -19,9 +19,10 @@ iteration.
   (author-linked damage, out-of-hours criminal damage). The UI toggle in
   `SlaPanel.tsx` is disabled until this lands.
 - **Deadline-aware chase pass (UJ-12).** The chase pass only finds tickets with
-  no update in 3 working days. It should chase near and overdue SLA deadlines
-  using the same `lib/sla.ts` evaluator, and notify the responsible party instead
-  of sending the board a digest (see the `ponytail:` note in `cron.ts`).
+  no update in 3 working days. Due-today SLA reminders now go to the agents
+  (`reminderPass`, D24). Still parked: overdue chasing, and notifying the
+  responsible party instead of sending the board a digest (see the `ponytail:`
+  note in `cron.ts`).
   This is part of contractor interactions.
 
 ## Housekeeping

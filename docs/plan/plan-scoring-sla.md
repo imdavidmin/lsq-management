@@ -38,7 +38,7 @@ web (same pattern as `common/tickets.ts`):
 | `ticket_created` | — | (start only) the ticket's creation |
 | `status` | a `STATUSES` value | `type='status'` and `to_value` = value |
 | `event_by` | `staff` \| `contractor` \| `resident` | any event whose `actor_role` is in the group (`staff` = agent, admin) |
-| `marker` | `enquiry_sent` \| `contractor_no_reply` \| `attended` | `type='marker'` and `to_value` = value |
+| `marker` | `enquiry_sent` \| `attended` | `type='marker'` and `to_value` = value |
 
 Evaluation, in a pure function in `server/src/lib/sla.ts` that reuses
 `workingDaysBetween` from `lib/workdays.ts`:
@@ -63,7 +63,7 @@ The seeded SLAs from the rubric:
 | 3rd-party follow-up | `res.third_party_follow_up` | all | status:pending_3rd_party → event_by:staff | 5 | yes |
 | Enquiry to contractor | `con.contractor_attendance` | needs_contractor | ticket_created → marker:enquiry_sent | 2 | no |
 | Reply to contractor | `con.contractor_attendance` | needs_contractor | event_by:contractor → event_by:staff | 2 | yes |
-| Chase silent contractor | `con.contractor_attendance` | needs_contractor | marker:contractor_no_reply → event_by:staff | 1 | yes |
+| Chase silent contractor | `con.contractor_attendance` | needs_contractor | marker:enquiry_sent → event_by:staff | 6 | yes |
 | Update after attendance | `con.contractor_attendance` | needs_contractor | marker:attended → event_by:staff | 2 | yes |
 
 `site.site_inspection` stays a hard-coded ratio (an auto metric with no SLAs
@@ -103,7 +103,7 @@ CREATE TABLE slas (
   - `metric_key` must be a `source='auto'` metric.
 
 **Config.** Two rows in the existing `config` table, seeded by the migration:
-`service_year_start = '08-01'` (MM-DD) and `contractor_reply_days = '5'`.
+`service_year_start = '08-01'` (MM-DD).
 
 The service year is labelled by the calendar year it starts in. `/score` accepts
 only the current or previous year; any other year returns a 400 via
@@ -126,12 +126,6 @@ the root `wrangler.jsonc` and `server/src/env.ts`.
   (already fetched from R2). If any recipient matches a contractor sender rule,
   using the same email-then-domain lookup as `resolveSender`, also append a
   `marker` event with `to_value='enquiry_sent'`.
-- **`contractor_no_reply` (cron).** Add this to the daily pass in
-  `server/src/scheduler/cron.ts`. Take the latest `enquiry_sent` on each open
-  ticket. If there's no contractor event after it, at least
-  `contractor_reply_days` working days have passed, and there's no
-  `contractor_no_reply` marker after it yet, insert one (`actor_role='system'`).
-  This produces one marker per enquiry.
 - **`attended` (manual).** Add `POST /tickets/{id}/markers
   {marker:'attended', notes}`, gated by `ticket:update`. On the ticket detail
   page, a "Contractor attended" button opens a dialog with a notes field. The
@@ -196,9 +190,8 @@ Active [●]                                   [Cancel] [Save]
    (routes delegate to the service, gated with `requirePermission`), audit
    events, and `openapi.yaml` + `api.md`.
 4. **Editor UI.** The SLAs tab and drawer described above.
-5. **Signals.** The `enquiry_sent` inference in the ai Worker, the
-   `contractor_no_reply` marker in the cron, and the `attended` endpoint and
-   button.
+5. **Signals.** The `enquiry_sent` inference in the ai Worker and the
+   `attended` endpoint and button.
 6. **Evaluator and score.** `lib/sla.ts`, then `/score` using it, limited to the
    current or previous year (part of the scoring segment from the earlier plan).
 7. **Snapshots.** The R2 binding and the snapshot endpoints, plus the Dashboard
@@ -349,33 +342,30 @@ alone.
    - A: `wd(Nov 4, Nov 6)` = 2. **Met.**
    - B: `wd(Nov 5, Nov 6)` = 1. **Met.**
 
-### 6. Chase silent contractor: `marker:contractor_no_reply → event_by:staff`, 1 wd, repeats
+### 6. Chase silent contractor: `marker:enquiry_sent → event_by:staff`, 6 wd, repeats (D24)
 
 **Ticket #105 (needs_contractor).**
 
 1. Fri Nov 6. A resident creates the ticket.
 2. Mon Nov 9 10:00. The agent emails `info@fixit.co.uk` with the ticket in CC.
    Events #40 (`comment`) and #41 (`marker enquiry_sent`) are appended, as in
-   trace 4. The enquiry SLA is met, because `wd(Nov 6, Nov 9)` = 1.
-3. The contractor never replies. The daily cron runs at 02:00 UTC with
-   `contractor_reply_days=5`, looking at the latest `enquiry_sent` (#41):
-   - Sun Nov 15 run: `wd(Nov 9, Nov 15)` = 4. Below 5, so nothing happens.
-   - Mon Nov 16 run: `wd(Nov 9, Nov 16)` = 5. There's no contractor event
-     after #41 and no `contractor_no_reply` after #41, so the cron inserts
-     event #42: `marker`, `to_value=contractor_no_reply`,
-     `actor_role=system`, `source=system`, at Nov 16 02:00.
-   - Tue Nov 17 run: a `contractor_no_reply` marker already follows #41, so
-     the cron skips the ticket.
-4. Tue Nov 17 15:00. The agent chases Fixit by email, with the ticket in CC.
-   This appends event #43 (`comment`, agent), which **stops the SLA**:
-   `wd(Nov 16, Nov 17)` = 1. **Met.**
-   - Because the email goes to a contractor, it also appends event #44, a new
-     `marker enquiry_sent`.
-   - #44 becomes the cron's new "latest enquiry", so the 5-day wait restarts.
-   - The enquiry SLA in trace 4 doesn't repeat, so #44 doesn't create a new
-     instance of it.
-5. If the agent hadn't acted until Wed Nov 18, `wd` would be 2, so the SLA would
+   trace 4. #41 starts **instance A**. The comment #40 comes before it, so it
+   can't stop A.
+3. Thu Nov 12 10:00. The contractor hasn't replied, and the agent chases early
+   by email. Comment #42 stops A: `wd(Nov 9, Nov 12)` = 3. **Met.** Marker #43
+   starts **instance B**.
+4. The contractor still doesn't reply. The daily cron (02:00 UTC, working days
+   only) evaluates the running instances:
+   - Thu Nov 19 run: B is at `wd(Nov 12, Nov 19)` = 5. Not due yet.
+   - Fri Nov 20 run: B is at 6, its budget, so it is due today. The cron emails
+     the agents "#105: Chase silent contractor". No event is written.
+5. Fri Nov 20 15:00. The agent chases again (#44, #45). B is **met** at 6, and
+   #45 starts instance C.
+6. If the agent hadn't acted until Mon Nov 23, B would be at 7, so the SLA would
    be **breached**.
+
+A contractor reply doesn't stop the instance, but the agent's answer does, and
+"Reply to contractor" already requires that answer within 2 working days.
 
 ### 7. Update after attendance: `marker:attended → event_by:staff`, 2 wd, repeats
 

@@ -34,11 +34,10 @@ derived from `events`, not stored as bespoke columns.
 1. **Definitions are data.** One `slas` row per rule (filter, start, stop,
    working-day budget, repeats), edited in the UI.
 2. **Judgement signals become markers.** `enquiry_sent` is inferred from agent
-   email CC'ing a contractor, `contractor_no_reply` is injected by the cron,
-   `attended` is entered by the on-site team. "Agent response expected" = any
+   email CC'ing a contractor, `attended` is entered by the on-site team. "Agent response expected" = any
    contractor event starts a staff-reply SLA.
-3. **State is recomputed on read**, no `clock` events. The cron only stamps
-   `contractor_no_reply` markers and chases.
+3. **State is recomputed on read**, no `clock` events. The cron writes only
+   chases. Its SLA "due today" reminders are emails, not events (D24).
 4. **Working-day arithmetic** is `server/src/lib/workdays.ts` (holidays only;
    the cleaning schedule is parked, see [plan/parked.md](plan/parked.md)).
 

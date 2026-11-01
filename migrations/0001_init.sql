@@ -140,8 +140,7 @@ CREATE TABLE events (
 CREATE INDEX idx_events_subject ON events(subject_type, subject_id, at);
 
 -- Key/value site config, admin-editable. `site_info` holds the estate
--- contact-details markdown; `service_year_start` (MM-DD) and
--- `contractor_reply_days` drive scoring (D21).
+-- contact-details markdown; `service_year_start` (MM-DD) drives scoring (D21).
 CREATE TABLE config (
   key        TEXT PRIMARY KEY,
   value      TEXT NOT NULL,                    -- markdown

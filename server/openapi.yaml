@@ -270,8 +270,8 @@ paths:
       summary: Record a manual SLA marker (D21)
       description: >
         Permission ticket:update. Only `attended` (contractor attended site) is
-        entered by hand; `enquiry_sent` and `contractor_no_reply` are inferred
-        by the system. The notes go in the event body.
+        entered by hand; `enquiry_sent` is inferred by the system. The notes go
+        in the event body.
       requestBody:
         required: true
         content:
@@ -840,8 +840,8 @@ paths:
       tags: [scoring]
       summary: Scoring settings
       description: >
-        Permission config:read. Only the scoring keys (service_year_start,
-        contractor_reply_days); site_info has its own route.
+        Permission config:read. Only the scoring keys (service_year_start);
+        site_info has its own route.
       responses:
         "200":
           content:
@@ -850,13 +850,12 @@ paths:
                 { type: array, items: { $ref: "#/components/schemas/ConfigEntry" } }
   /config/{key}:
     parameters:
-      - { in: path, name: key, required: true, schema: { type: string, enum: [service_year_start, contractor_reply_days] } }
+      - { in: path, name: key, required: true, schema: { type: string, enum: [service_year_start] } }
     put:
       tags: [scoring]
       summary: Set a scoring setting
       description: >
-        Permission config:manage. service_year_start is MM-DD;
-        contractor_reply_days is a positive integer (working days).
+        Permission config:manage. service_year_start is MM-DD.
       requestBody:
         required: true
         content:

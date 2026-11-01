@@ -10,7 +10,7 @@ export const ROLE_GROUPS = {
 } as const;
 
 // `marker` events: signals no other action records (D21).
-export const MARKERS = ["enquiry_sent", "contractor_no_reply", "attended"] as const;
+export const MARKERS = ["enquiry_sent", "attended"] as const;
 
 // Values each start/stop kind accepts; `ticket_created` takes none and can only start.
 export const KIND_VALUES = {
@@ -27,6 +27,5 @@ export const STOP_KINDS = START_KINDS.filter((k) => k !== "ticket_created");
 // Scoring settings in the `config` table, with the format each value must match.
 export const SETTINGS = {
   service_year_start: /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, // MM-DD
-  contractor_reply_days: /^[1-9]\d*$/, // working days
 } as const;
 export type SettingKey = keyof typeof SETTINGS;

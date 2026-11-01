@@ -92,11 +92,9 @@ INSERT OR IGNORE INTO config (key, value) VALUES
 Report anything else via a ticket on this system.');
 
 -- Scoring settings: service_year_start is MM-DD (a year is labelled by the
--- calendar year it starts in); contractor_reply_days = working days before the
--- cron marks a contractor silent (D21).
+-- calendar year it starts in) (D21).
 INSERT OR IGNORE INTO config (key, value) VALUES
-  ('service_year_start', '08-01'),
-  ('contractor_reply_days', '5');
+  ('service_year_start', '08-01');
 
 -- SLAs (D21), seeded from the rubric; traces in docs/plan/plan-scoring-sla.md.
 INSERT INTO slas (name, metric_key, category, needs_contractor, start_on, start_value, stop_on, stop_value, budget_days, repeats, description) VALUES
@@ -105,5 +103,5 @@ INSERT INTO slas (name, metric_key, category, needs_contractor, start_on, start_
   ('3rd-party follow-up',     'res.third_party_follow_up',   NULL,       NULL, 'status',         'pending_3rd_party',   'event_by', 'staff',        5, 1, 'Tickets requiring follow-up pending a 3rd party have an actioned update, each time they go pending.'),
   ('Enquiry to contractor',   'con.contractor_attendance',   NULL,       1,    'ticket_created', NULL,                  'marker',   'enquiry_sent', 2, 0, 'Initial enquiry to the contractor after the ticket is raised.'),
   ('Reply to contractor',     'con.contractor_attendance',   NULL,       1,    'event_by',       'contractor',          'event_by', 'staff',        2, 1, 'Where an agent response is expected, the agent replies to the contractor.'),
-  ('Chase silent contractor', 'con.contractor_attendance',   NULL,       1,    'marker',         'contractor_no_reply', 'event_by', 'staff',        1, 1, 'If the contractor doesn''t respond, the agent follows up.'),
+  ('Chase silent contractor', 'con.contractor_attendance',   NULL,       1,    'marker',         'enquiry_sent',        'event_by', 'staff',        6, 1, 'After each enquiry, the agent follows up within 6 working days, so the contractor thread doesn''t go cold.'),
   ('Update after attendance', 'con.contractor_attendance',   NULL,       1,    'marker',         'attended',            'event_by', 'staff',        2, 1, 'After each contractor attendance, the ticket is updated with the outcome and next action.');
