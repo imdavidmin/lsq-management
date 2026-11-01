@@ -155,11 +155,14 @@ npm run migrate:local  # apply migrations/ to local D1
 
 ## Two gotchas
 
-- **Edit `0001_init.sql` in place until first deploy.** Nothing is deployed yet
-  (`database_id` in `wrangler.jsonc` is a placeholder), so change the model by
-  editing `migrations/0001_init.sql` (schema) / `0002_seed.sql` (seed) directly,
-  then reset local D1 (`rm -rf .wrangler/state/v3/d1 && npm run migrate:local`).
-  Once a real D1 exists, switch to append-only `0003_*.sql` migrations.
+- **Edit `0001_init.sql` in place while the data is disposable.** Only a dev
+  preview is deployed (every push to `main` runs `.github/workflows/deploy.yml`:
+  test → `migrate:remote` → deploy). Change the model by editing
+  `migrations/0001_init.sql` (schema) / `0002_seed.sql` (seed) directly, then
+  reset local D1 (`rm -rf .wrangler/state/v3/d1 && npm run migrate:local`).
+  Already-applied migrations don't re-run remotely, so an in-place edit also
+  needs the remote D1 wiped by hand. Switch to append-only `0003_*.sql` once
+  real data must be kept.
 - **SLAs are data, evaluated on read (D21).** Don't store per-ticket SLA state
   or write `clock` events; add a start/stop kind to `common/sla.ts` only when a
   real rule needs it. The manual scoring exclusion is still open

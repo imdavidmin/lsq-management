@@ -1,0 +1,31 @@
+# Dev preview: every push to main tests, migrates the shared D1 and deploys
+# all three Workers (server serves web/dist, so the web build comes first).
+name: Deploy dev preview
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: f453e6f1c34f3584556b0ad876e3048e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm --workspace web run build
+      - run: npm run migrate:remote
+      - run: npm run deploy
