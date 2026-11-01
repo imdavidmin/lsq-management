@@ -72,6 +72,22 @@ describe("directory", () => {
     expect(view).toBeTruthy();
   });
 
+  it("lets an account download who read its own PII, and nothing else (D22)", async () => {
+    const board = await login("board-sar@lsq.test", "board", "estate", null);
+    const res = await login("res-sar@lsq.test", "resident", "unit", 101);
+    await req(`/api/accounts/${res.id}?reveal=email`, board.cookie);
+    // Same id, different resource type → must not appear.
+    await env.DB.prepare(
+      "INSERT INTO access_log (at, account_id, action, resource_type, resource_id) VALUES ('2026-01-01', ?, 'view', 'ticket', ?)"
+    ).bind(board.id, String(res.id)).run();
+
+    const out = await req("/api/auth/me/access-log", res.cookie);
+    expect(out.headers.get("content-disposition")).toContain("attachment");
+    const lines = (await out.text()).trim().split("\r\n");
+    expect(lines).toHaveLength(2); // header + the one account view
+    expect(lines[1]).toContain('"view","board-sar@lsq.test","{""fields"":[""email""]}"');
+  });
+
   it("invites a resident with a unit → creates a resident grant", async () => {
     const board = await login("board-inv@lsq.test", "board", "estate", null);
     const acct = (await (await post("/api/accounts", board.cookie, {

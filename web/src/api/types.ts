@@ -31,7 +31,11 @@ export type MetricMode = S["MetricMode"];
 export type MetricValue = S["MetricValue"];
 export type MetricValueCreate = S["MetricValueCreate"];
 export type Score = S["Score"];
+export type MetricDetail = S["MetricDetail"];
+export type SlaInstance = S["SlaInstance"];
+export type Snapshot = S["Snapshot"];
 export type MonthlyReport = S["MonthlyReport"];
+export type Sla = S["Sla"];
 
 export type Survey = S["Survey"];
 export type SurveyResponse = S["SurveyResponse"];

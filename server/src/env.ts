@@ -1,5 +1,6 @@
 export interface Env {
   DB: D1Database;
+  SNAPSHOTS: R2Bucket; // year-end score snapshots (D21)
   ASSETS?: Fetcher; // built web/dist (SPA); absent in tests. See app.ts notFound.
   OTP_LIMIT?: import("./lib/ratelimit").RateLimiter; // per-IP/email OTP cap
   API_LIMIT?: import("./lib/ratelimit").RateLimiter; // lax global per-IP cap

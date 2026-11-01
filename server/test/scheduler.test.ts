@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { chasePass, isReportDay, runScheduled } from "../src/scheduler/cron";
+import { chasePass, isReportDay, noReplyPass, runScheduled } from "../src/scheduler/cron";
 import { workingDaysBetween } from "../src/lib/workdays";
 
 // Seed a ticket + its latest event at a given time.
@@ -71,5 +71,35 @@ describe("scheduler — report day gate", () => {
     const on = { ...env, REPORT_DAY_OF_MONTH: "20" } as typeof env;
     await runScheduled(on, new Date("2026-02-06T02:00:00.000Z"));
     expect((await chaseEvents(5004)).length).toBe(1);
+  });
+});
+
+describe("scheduler — contractor no-reply marker (D21)", () => {
+  const marker = (id: number, at: string, value: string, role = "agent") =>
+    env.DB.prepare(
+      "INSERT INTO events (subject_type, subject_id, at, actor_role, type, to_value, source) VALUES ('ticket', ?, ?, ?, 'marker', ?, 'email')"
+    ).bind(id, at, role, value).run();
+  const noReplies = (id: number) =>
+    env.DB.prepare("SELECT at FROM events WHERE subject_id = ? AND to_value = 'contractor_no_reply'").bind(id).all().then((r) => r.results);
+
+  it("marks once after N working days of contractor silence; a contractor reply prevents it", async () => {
+    await seedTicket(5101, "open", "2026-11-06T09:00:00.000Z"); // trace 6
+    await marker(5101, "2026-11-09T10:00:00.000Z", "enquiry_sent");
+    await seedTicket(5102, "open", "2026-11-06T09:00:00.000Z");
+    await marker(5102, "2026-11-09T10:00:00.000Z", "enquiry_sent");
+    await env.DB.prepare(
+      "INSERT INTO events (subject_type, subject_id, at, actor_role, type, source) VALUES ('ticket', 5102, '2026-11-10T09:00:00Z', 'contractor', 'comment', 'email')"
+    ).run();
+
+    expect((await noReplyPass(env, new Date("2026-11-15T02:00:00Z"))).marked).toBe(0); // 4 wd
+    expect((await noReplyPass(env, new Date("2026-11-16T02:00:00Z"))).marked).toBe(1); // 5 wd
+    expect((await noReplyPass(env, new Date("2026-11-17T02:00:00Z"))).marked).toBe(0); // already marked
+    expect(await noReplies(5101)).toEqual([{ at: "2026-11-16T02:00:00.000Z" }]);
+    expect(await noReplies(5102)).toEqual([]);
+
+    // A fresh enquiry restarts the wait.
+    await marker(5101, "2026-11-17T15:00:00.000Z", "enquiry_sent");
+    expect((await noReplyPass(env, new Date("2026-11-23T02:00:00Z"))).marked).toBe(0); // 4 wd
+    expect((await noReplyPass(env, new Date("2026-11-24T02:00:00Z"))).marked).toBe(1);
   });
 });

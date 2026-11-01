@@ -22,7 +22,7 @@ before editing code — the code comments assume you have.
 
 | If you're touching…                    | Read first                          |
 | --------------------------------------- | ----------------------------------- |
-| anything — the settled decisions + why  | `docs/decisions.md` (**D1–D19**)    |
+| anything — the settled decisions + why  | `docs/decisions.md` (**D1–D21**)    |
 | features / the scoring rubric           | `docs/requirements.md` (authoritative) |
 | email ingest, scoring, cron, roles      | `docs/architecture.md`              |
 | routes / permissions / worker topology  | `docs/api.md` + `server/openapi.yaml` |
@@ -30,8 +30,8 @@ before editing code — the code comments assume you have.
 | authz, rate limiting, RBAC posture      | `docs/security.md`                  |
 | PII, opt-out, read-audit                | `docs/gdpr.md`                      |
 | surveys (one-vote, scoring gate)        | `docs/surveys.md`                   |
-| **SLA clocks — still unsettled**        | `docs/sla-tracking.md` (OPEN)       |
-| the data model                          | `schema.sql` (annotated reference)  |
+| SLA definitions + evaluation (D21)      | `docs/plan/plan-scoring-sla.md`     |
+| the data model                          | `migrations/0001_init.sql` (annotated) |
 
 **Decisions are append-only.** A new design decision adds a `D<n>` section to
 `docs/decisions.md` with its rationale; superseding one edits the old section
@@ -142,7 +142,8 @@ The bar is **the next reader**, not the cleverest possible solution.
 npm install            # root, hoists both workspaces
 npm test               # vitest on @cloudflare/vitest-pool-workers (real D1 in miniflare)
 npm run typecheck      # tsc -p server/tsconfig.json
-npm run dev            # wrangler dev
+npm run be             # wrangler dev (server)
+npm run fe             # vite (web)
 npm run migrate:local  # apply migrations/ to local D1
 ```
 
@@ -154,12 +155,12 @@ npm run migrate:local  # apply migrations/ to local D1
 
 ## Two gotchas
 
-- **`schema.sql` vs `migrations/`.** `migrations/` is what actually applies (prod
-  + tests). `schema.sql` is the hand-maintained annotated reference and has
-  drifted slightly. When you change the model, write a migration; keep
-  `schema.sql` in sync if you touch it, and treat migrations as authoritative for
-  what exists.
-- **SLA clock tracking is unsolved.** `docs/sla-tracking.md` is an open question,
-  not a spec. If asked to implement SLA computation, spike one clock (cleaning
-  "1 working day") end-to-end first and surface the open decisions — don't invent
-  the general design silently.
+- **Edit `0001_init.sql` in place until first deploy.** Nothing is deployed yet
+  (`database_id` in `wrangler.jsonc` is a placeholder), so change the model by
+  editing `migrations/0001_init.sql` (schema) / `0002_seed.sql` (seed) directly,
+  then reset local D1 (`rm -rf .wrangler/state/v3/d1 && npm run migrate:local`).
+  Once a real D1 exists, switch to append-only `0003_*.sql` migrations.
+- **SLAs are data, evaluated on read (D21).** Don't store per-ticket SLA state
+  or write `clock` events; add a start/stop kind to `common/sla.ts` only when a
+  real rule needs it. The manual scoring exclusion is still open
+  (`docs/sla-tracking.md`).

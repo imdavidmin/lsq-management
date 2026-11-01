@@ -37,6 +37,7 @@ target (D18). `public` = no session (login only).
 | POST   | `/auth/otp/verify`  | public  | Verify code → set session cookie                | D17   |
 | POST   | `/auth/logout`      | session | Delete current session                          | D17   |
 | GET    | `/auth/me`          | session | Current account + effective grants/permissions  | UJ-09 |
+| GET    | `/auth/me/access-log` | session | Download who read the caller's own account PII (D22) | — |
 
 ## tickets · `/tickets/*`
 
@@ -46,8 +47,9 @@ target (D18). `public` = no session (login only).
 | POST   | `/tickets`             | `ticket:create`  | Create ticket (creator picks category, optional) | UJ-01, UJ-05 |
 | GET    | `/tickets/{id}`        | `ticket:read`    | Ticket detail + event timeline                   | UJ-02        |
 | PATCH  | `/tickets/{id}`        | `ticket:update`  | Status / category (reassign) / flags             | UJ-06        |
-| GET    | `/tickets/{id}/events` | `ticket:read`    | Timeline (comments, clock, chase)                | UJ-02        |
+| GET    | `/tickets/{id}/events` | `ticket:read`    | Timeline (comments, markers, chase)              | UJ-02        |
 | POST   | `/tickets/{id}/events` | `ticket:comment` | Add a UI comment/update                          | UJ-02        |
+| POST   | `/tickets/{id}/markers` | `ticket:update` | Record "contractor attended" + notes             | D21          |
 
 ## directory · identity, access, external parties
 
@@ -75,15 +77,24 @@ target (D18). `public` = no session (login only).
 | PATCH  | `/senders/{id}`            | `sender:manage`  | Link to org / ignore                                 | UJ-07        |
 | DELETE | `/senders/{id}`            | `sender:manage`  | Remove a rule                                        | —            |
 
-## scoring · `/score`, `/metrics`, `/reports`
+## scoring · `/score`, `/metrics`, `/slas`, `/config`, `/reports`
 
 | Method | Path                         | Perm            | Purpose                                             | UJ           |
 | ------ | ---------------------------- | --------------- | --------------------------------------------------- | ------------ |
-| GET    | `/score`                     | `score:read`    | Live fee + per-domain/metric breakdown (`?year=`)   | UJ-10        |
+| GET    | `/score`                     | `score:read`    | Live fee + per-domain/metric breakdown (`?year=`, current or previous only) | UJ-10, D23 |
+| GET    | `/score/snapshots`           | `score:read`    | Year-end snapshots in R2                            | D21          |
+| POST   | `/score/snapshots`           | `score:snapshot`| Freeze the just-ended year's score to R2            | D21          |
+| GET    | `/score/snapshots/{year}/{stamp}` | `score:read` | Download one snapshot (JSON)                       | D21          |
+| GET    | `/tickets/{id}/slas`         | `sla:read`      | The ticket's SLA instances, evaluated now           | D21          |
 | GET    | `/metrics`                   | `metric:read`   | Metric config                                       | —            |
-| PATCH  | `/metrics/{key}`             | `metric:manage` | Edit weight / mode / threshold / active             | D6           |
+| PATCH  | `/metrics`                   | `metric:manage` | Bulk-edit metrics; weights must sum to 100          | D6           |
+| GET    | `/slas`                      | `sla:read`      | SLA definitions (evaluated on read)                 | D21          |
+| POST   | `/slas`                      | `sla:manage`    | Create an SLA (audited as a `config` event)         | D21          |
+| PATCH  | `/slas/{id}`                 | `sla:manage`    | Edit / (de)activate an SLA — no delete (audited)    | D21          |
+| GET    | `/config`                    | `config:read`   | Scoring settings (service year start, reply days)   | D21          |
+| PUT    | `/config/{key}`              | `config:manage` | Set one scoring setting (format per key)            | D21          |
 | GET    | `/metric-values`             | `metric:read`   | Manual/computed values (`?year=&metric=`)           | —            |
-| POST   | `/metric-values`             | `metric:enter`  | Enter a manual value OR board dispute (superseding) | UJ-15, UJ-08 |
+| POST   | `/metric-values`             | `metric:enter` (+`metric:dispute` for auto/survey) | Enter a manual value OR board dispute (superseding) | UJ-15, UJ-08 |
 | PATCH  | `/metric-values/{id}/attest` | `metric:attest` | Board sign-off on a value                           | UJ-15        |
 | GET    | `/reports/monthly`           | `report:read`   | Monthly performance report (`?month=YYYY-MM`)       | UJ-11        |
 

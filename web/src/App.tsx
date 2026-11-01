@@ -9,6 +9,8 @@ import { PerformancePage } from "./features/scoring/PerformancePage";
 import { DirectoryPage } from "./features/directory/DirectoryPage";
 import { SurveysPage } from "./features/engagement/SurveysPage";
 import { SiteInfoPage } from "./features/engagement/SiteInfoPage";
+import { AlphaOverlay } from "./components/AlphaOverlay";
+import { MyAccountPage } from "./features/account/MyAccountPage";
 
 export function App() {
   const { identity, loading } = useAuth();
@@ -28,12 +30,13 @@ export function App() {
       <Route element={<AppShell />}>
         <Route index element={<Navigate to="/tickets" replace />} />
         <Route path="tickets" element={<TicketsPage />} />
-        <Route path="tickets/:id" element={<TicketDetailPage />} />
+        <Route path="tickets/:id" element={<AlphaOverlay view="ticket-detail"><TicketDetailPage /></AlphaOverlay>} />
         <Route path="performance/*" element={<PerformancePage />} />
         <Route path="directory/*" element={<DirectoryPage />} />
         <Route path="surveys" element={<SurveysPage />} />
         <Route path="surveys/:id" element={<SurveysPage />} />
-        <Route path="site-info" element={<SiteInfoPage />} />
+        <Route path="site-info" element={<AlphaOverlay view="site-info"><SiteInfoPage /></AlphaOverlay>} />
+        <Route path="my-account" element={<MyAccountPage />} />
         <Route path="*" element={<Navigate to="/tickets" replace />} />
       </Route>
     </Routes>

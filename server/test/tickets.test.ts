@@ -158,4 +158,17 @@ describe("tickets", () => {
     expect(ev.source).toBe("ui");
     expect(ev.body).toBe("any update");
   });
+
+  it("records an attended marker with notes; residents can't, other markers are rejected", async () => {
+    const agent = await login("ag-m@lsq.test", "agent", "estate", null);
+    const t = (await (await post("/api/tickets", agent.cookie, { title: "Door", description: "closer broken" })).json()) as any;
+    const res = await post(`/api/tickets/${t.id}/markers`, agent.cookie, { marker: "attended", notes: "Closer replaced" });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ type: "marker", to_value: "attended", body: "Closer replaced", actor_role: "agent" });
+
+    expect((await post(`/api/tickets/${t.id}/markers`, agent.cookie, { marker: "enquiry_sent", notes: "x" })).status).toBe(400);
+    expect((await post(`/api/tickets/${t.id}/markers`, agent.cookie, { marker: "attended", notes: " " })).status).toBe(400);
+    const res2 = await login("res-m@lsq.test", "resident", "estate", null);
+    expect((await post(`/api/tickets/${t.id}/markers`, res2.cookie, { marker: "attended", notes: "x" })).status).toBe(403);
+  });
 });

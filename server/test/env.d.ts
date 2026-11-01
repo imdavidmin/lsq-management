@@ -6,6 +6,7 @@
 declare module "cloudflare:test" {
   interface ProvidedEnv {
     DB: D1Database;
+    SNAPSHOTS: R2Bucket;
     OTP_LIMIT?: import("../src/lib/ratelimit").RateLimiter;
     API_LIMIT?: import("../src/lib/ratelimit").RateLimiter;
     EMAIL_DOMAIN: string;

@@ -29,7 +29,7 @@ import { CATEGORIES, humanize, isTerminal, roleColor } from "../../components/ti
 import { STATUSES } from "../../../../common/tickets";
 import { useAccounts, useBuildings, useUnits } from "../directory/api";
 import type { Event, TicketDetail, TicketStatus } from "../../api/types";
-import { useAddComment, usePatchTicket, useTicket } from "./api";
+import { useAddComment, useAddMarker, usePatchTicket, useTicket } from "./api";
 import { SlaPanel } from "./SlaPanel";
 
 const useStyles = makeStyles({
@@ -77,7 +77,9 @@ function EventLine({ e, name }: { e: Event; name: string }) {
   const detail =
     e.type === "status"
       ? `changed status ${e.from_value ? `from ${humanize(e.from_value)} ` : ""}to ${humanize(e.to_value ?? "")}`
-      : `${e.type}${e.from_value || e.to_value ? `: ${e.from_value ?? ""} → ${e.to_value ?? ""}` : ""}`;
+      : e.type === "marker"
+        ? `marked: ${humanize(e.to_value)}${e.body ? ` — ${e.body}` : ""}`
+        : `${e.type}${e.from_value || e.to_value ? `: ${e.from_value ?? ""} → ${e.to_value ?? ""}` : ""}`;
   return (
     <div className={s.eventLine}>
       <ArrowSyncRegular />
@@ -159,6 +161,36 @@ function StatusDialog({ id, current }: { id: number; current: TicketStatus }) {
           <DialogActions>
             <Button appearance="secondary" onClick={() => setOpen(false)}>Cancel</Button>
             <Button appearance="primary" disabled={busy || !comment} onClick={commit}>Confirm</Button>
+          </DialogActions>
+        </DialogBody>
+      </DialogSurface>
+    </Dialog>
+  );
+}
+
+// On-site team records a contractor visit; its notes feed the attendance SLA (D21).
+function AttendedDialog({ id }: { id: number }) {
+  const s = useStyles();
+  const mark = useAddMarker(id);
+  const [open, setOpen] = useState(false);
+  const [notes, setNotes] = useState("");
+
+  const commit = () => mark.mutate(notes, { onSuccess: () => { setOpen(false); setNotes(""); } });
+
+  return (
+    <Dialog open={open} onOpenChange={(_, d) => setOpen(d.open)}>
+      <Button appearance="secondary" onClick={() => setOpen(true)}>Contractor attended</Button>
+      <DialogSurface>
+        <DialogBody>
+          <DialogTitle>Contractor attended</DialogTitle>
+          <DialogContent className={s.dialogFields}>
+            <Field label="What was done" required>
+              <Textarea value={notes} onChange={(_, d) => setNotes(d.value)} rows={3} />
+            </Field>
+          </DialogContent>
+          <DialogActions>
+            <Button appearance="secondary" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button appearance="primary" disabled={mark.isPending || !notes.trim()} onClick={commit}>Record</Button>
           </DialogActions>
         </DialogBody>
       </DialogSurface>
@@ -254,10 +286,11 @@ export function TicketDetailPage() {
                       </Dropdown>
                     </Can>
                   </div>
+                  {t.needs_contractor && <Can perm="ticket:update"><AttendedDialog id={id} /></Can>}
                   <OpenedBy t={t} who={accounts.data?.find((a) => a.id === t.created_by)?.name ?? (t.created_by ? `#${t.created_by}` : "unknown")} />
                 </Card>
 
-                <SlaPanel events={t.events ?? []} />
+                <Can perm="sla:read"><SlaPanel id={id} /></Can>
               </div>
             </div>
           </>

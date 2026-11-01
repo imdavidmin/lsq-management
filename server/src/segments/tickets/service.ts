@@ -301,13 +301,15 @@ export async function addComment(
   ticketId: number,
   accountId: number,
   role: string,
-  body: string
+  body: string,
+  marker?: string
 ): Promise<TicketEvent> {
   const now = new Date().toISOString();
   const id = await appendEvent(env, ticketId, now, {
     actor_id: accountId,
     actor_role: role,
-    type: "comment",
+    type: marker ? "marker" : "comment",
+    to_value: marker ?? null,
     body,
     source: "ui",
   });

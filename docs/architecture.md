@@ -1,6 +1,6 @@
 # Architecture & Technical Design
 
-Companion to `schema.sql`. Covers the two moving parts that matter: the inbound
+Companion to `migrations/0001_init.sql`. Covers the two moving parts that matter: the inbound
 email flow and the nightly scoring/chase engine.
 
 ## Stack
@@ -10,7 +10,7 @@ email flow and the nightly scoring/chase engine.
 - **Cloudflare Workers** — three deployed Workers sharing one D1: `server`
   (Hono API + cron), `email` (inbound `email()` → queue), `ai` (queue consumer:
   summarise + append events). See Inbound email flow for why three, not one.
-- **D1 (SQLite)** — all persistent state (`schema.sql`), shared by all Workers.
+- **D1 (SQLite)** — all persistent state (`migrations/0001_init.sql`), shared by all Workers.
 - **Workers AI** — inbound email summarisation only (in the `ai` Worker).
   Ticket categories are chosen by the creator, not classified by AI.
 - **Queues + R2** — inbound email is staged in R2 and processed off a queue by
@@ -25,10 +25,10 @@ the lazy option here, and avoids per-seat licences.
 
 ## Data model summary
 
-See `schema.sql` for the full DDL. Key ideas:
+See `migrations/0001_init.sql` for the full DDL. Key ideas:
 
 - **`events` is the audit spine.** Comments, classification changes, status
-  changes, SLA clock stamps, board overrides and chases are all rows. Immutable
+  changes, markers (D21), SLA config edits, board overrides and chases are all rows. Immutable
   - append-only → "board can dispute anything later" is free. Each row names its
     subject polymorphically via `subject_type`/`subject_id` — `ticket` today,
     `metric_value` (attestations/disputes) and others later, with no schema

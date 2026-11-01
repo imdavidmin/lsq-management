@@ -12,7 +12,7 @@ import {
 } from "../../lib/cookies";
 import { requireSession } from "../../middleware/session";
 import { grantsForAccount } from "../../db/client";
-import { destroySession, permissionsFor, requestOtp, verifyOtp } from "./service";
+import { accessLogFor, destroySession, permissionsFor, requestOtp, verifyOtp } from "./service";
 
 const requestSchema = z.object({ email: z.string().email() });
 const verifySchema = z.object({
@@ -67,4 +67,16 @@ auth.get("/me", requireSession, async (c) => {
     grants: c.get("grants"),
     permissions: await permissionsFor(c.env, account.id),
   });
+});
+
+// Quote every cell; prefix formula-leading chars so spreadsheets don't execute them.
+const csvCell = (v: string | null) => `"${(v ?? "").replace(/^[=+\-@]/, "'$&").replace(/"/g, '""')}"`;
+
+// GET /auth/me/access-log — the caller's own PII read trail, as a CSV download (D22).
+auth.get("/me/access-log", requireSession, async (c) => {
+  const rows = await accessLogFor(c.env, c.get("account").id);
+  const lines = [["at", "action", "by", "detail"], ...rows.map((r) => [r.at, r.action, r.by, r.detail])];
+  c.header("content-type", "text/csv; charset=utf-8");
+  c.header("content-disposition", 'attachment; filename="access-log.csv"');
+  return c.body(lines.map((l) => l.map(csvCell).join(",")).join("\r\n") + "\r\n");
 });

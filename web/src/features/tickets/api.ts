@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { request } from "../../api/client";
-import type { Event, Ticket, TicketCreate, TicketDetail } from "../../api/types";
+import type { Event, SlaInstance, Ticket, TicketCreate, TicketDetail } from "../../api/types";
 
 export type TicketFilters = {
   status?: string;
@@ -24,6 +24,13 @@ export const useTicket = (id: number) =>
   useQuery({
     queryKey: ["ticket", id],
     queryFn: () => request<TicketDetail>(`/tickets/${id}`),
+  });
+
+// Nested under ["ticket", id] so every ticket mutation re-evaluates it.
+export const useTicketSlas = (id: number) =>
+  useQuery({
+    queryKey: ["ticket", id, "slas"],
+    queryFn: () => request<SlaInstance[]>(`/tickets/${id}/slas`),
   });
 
 export function useCreateTicket() {
@@ -52,6 +59,15 @@ export function useAddComment(id: number) {
   return useMutation({
     mutationFn: (body: string) =>
       request<Event>(`/tickets/${id}/events`, { method: "POST", body: { body } }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["ticket", id] }),
+  });
+}
+
+export function useAddMarker(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (notes: string) =>
+      request<Event>(`/tickets/${id}/markers`, { method: "POST", body: { marker: "attended", notes } }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["ticket", id] }),
   });
 }

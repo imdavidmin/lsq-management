@@ -173,6 +173,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/me/access-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who has read the caller's own account PII (GDPR subject access, D22)
+         * @description access_log rows where resource_type=account and resource_id is the caller. Self only; served as a CSV attachment with columns at, action (view|list|export), by (reader's name), detail (JSON, e.g. revealed fields).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/csv": string;
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tickets": {
         parameters: {
             query?: never;
@@ -389,6 +428,58 @@ export interface paths {
                         "application/json": components["schemas"]["Event"];
                     };
                 };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{id}/markers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a manual SLA marker (D21)
+         * @description Permission ticket:update. Only `attended` (contractor attended site) is entered by hand; `enquiry_sent` and `contractor_no_reply` are inferred by the system. The notes go in the event body.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        marker: "attended";
+                        notes: string;
+                    };
+                };
+            };
+            responses: {
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Event"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
                 403: components["responses"]["Forbidden"];
             };
         };
@@ -1159,12 +1250,12 @@ export interface paths {
         };
         /**
          * Live performance fee and breakdown
-         * @description Computed on-demand (UJ-10). No caching.
+         * @description Computed on-demand (UJ-10, D13). No caching. Only the ongoing and the just-ended service year can be scored; older years are a 400 (their figures live in the year-end snapshot). In the ongoing year a metric with no value yet is assumed met (result 1, `pending`).
          */
         get: {
             parameters: {
                 query?: {
-                    /** @description Service year; defaults to current */
+                    /** @description Service year (labelled by the year it starts in); defaults to current */
                     year?: number;
                 };
                 header?: never;
@@ -1181,7 +1272,210 @@ export interface paths {
                         "application/json": components["schemas"]["Score"];
                     };
                 };
+                400: components["responses"]["BadRequest"];
                 403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/score/metrics/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * How one metric's score was arrived at, with its tickets
+         * @description Permission score:read. Same evaluation and year rules as /score. For an SLA metric, every ticket an SLA applies to with its verdict and instances; for site inspection, the defect tickets (passes = raised by staff). A board dispute overrides the value, but the tickets are still listed.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    year?: number;
+                };
+                header?: never;
+                path: {
+                    key: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MetricDetail"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/score/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List year-end score snapshots, newest first (D21) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Snapshot"][];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        /**
+         * Freeze the just-ended service year's score to R2 (D21)
+         * @description Permission score:snapshot. Only the service year that has just ended is accepted. Writes the score, metric and SLA definitions, the year's SLA edits and every ticket's SLA instances, and appends a `snapshot` event.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        year: number;
+                    };
+                };
+            };
+            responses: {
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Snapshot"] & {
+                            projected_fee_ratio?: number;
+                        };
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/score/snapshots/{year}/{stamp}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                year: number;
+                stamp: string;
+            };
+            cookie?: never;
+        };
+        /** Download one snapshot (JSON attachment) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    year: number;
+                    stamp: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{id}/slas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        /**
+         * The ticket's SLA instances, evaluated now (D21)
+         * @description Permission sla:read, scoped to the ticket. Computed on read, never stored.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SlaInstance"][];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
             };
         };
         put?: never;
@@ -1224,15 +1518,118 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /**
+         * Bulk-edit weight / mode / threshold / active / description (D6)
+         * @description Permission metric:manage. Patches are merged onto the stored table and applied together only if the result passes the whole-table rules: active weights sum to 1, each weight is 0..1, and a proportional metric's threshold is in (0, 1]. A 400's `message` lists one problem per line. Returns the full table.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        key: string;
+                        weight?: number;
+                        mode?: components["schemas"]["MetricMode"];
+                        threshold?: number | null;
+                        active?: boolean;
+                        description?: string | null;
+                    }[];
+                };
+            };
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Metric"][];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        trace?: never;
+    };
+    "/slas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * SLA definitions (D21)
+         * @description Permission sla:read. Evaluated on read against ticket events; never stored per ticket.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Sla"][];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        /**
+         * Create an SLA
+         * @description Permission sla:manage. `metric_key` must be an auto metric; start/stop values must fit their kind (common/sla.ts). Appends a `config` event (subject_type=sla) to the audit spine.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SlaCreate"];
+                };
+            };
+            responses: {
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Sla"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
-    "/metrics/{key}": {
+    "/slas/{id}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                key: string;
+                id: number;
             };
             cookie?: never;
         };
@@ -1242,23 +1639,105 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Edit weight / mode / threshold / active (D6) */
+        /**
+         * Edit or (de)activate an SLA
+         * @description Permission sla:manage. Any subset of SlaCreate fields; the merged row is validated as on create. No delete — set active=false. Appends a `config` event with the old and new row as JSON.
+         */
         patch: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    key: string;
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SlaUpdate"];
+                };
+            };
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Sla"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        trace?: never;
+    };
+    "/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Scoring settings
+         * @description Permission config:read. Only the scoring keys (service_year_start, contractor_reply_days); site_info has its own route.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConfigEntry"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/config/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: "service_year_start" | "contractor_reply_days";
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a scoring setting
+         * @description Permission config:manage. service_year_start is MM-DD; contractor_reply_days is a positive integer (working days).
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    key: "service_year_start" | "contractor_reply_days";
                 };
                 cookie?: never;
             };
             requestBody: {
                 content: {
                     "application/json": {
-                        weight?: number;
-                        mode?: components["schemas"]["MetricMode"];
-                        threshold?: number | null;
-                        active?: boolean;
+                        value: string;
                     };
                 };
             };
@@ -1268,11 +1747,19 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Metric"];
+                        "application/json": components["schemas"]["ConfigEntry"];
                     };
                 };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
             };
         };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/metric-values": {
@@ -1282,7 +1769,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Manual/computed metric values */
+        /**
+         * Manual/computed metric values
+         * @description Permission metric:read. All stored rows, newest first; latest per (metric, year) wins.
+         */
         get: {
             parameters: {
                 query?: {
@@ -1308,7 +1798,7 @@ export interface paths {
         put?: never;
         /**
          * Enter a manual value, or dispute (superseding insert)
-         * @description Admin/agent manual entry (UJ-15) and board dispute (UJ-08) are the same operation — a new row; latest per (metric, year) wins.
+         * @description Admin/agent manual entry (UJ-15) and board dispute (UJ-08) are the same operation — a new row; latest per (metric, year) wins. Permission metric:enter; overriding an auto or survey metric also needs metric:dispute (board). The server derives `result` from the metric's mode and threshold. Only the ongoing or just-ended service year.
          */
         post: {
             parameters: {
@@ -1331,6 +1821,9 @@ export interface paths {
                         "application/json": components["schemas"]["MetricValue"];
                     };
                 };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
             };
         };
         delete?: never;
@@ -1354,7 +1847,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Board sign-off on a value (UJ-15) */
+        /**
+         * Board sign-off on a value (UJ-15)
+         * @description Permission metric:attest. Appends an `attest` event on the value.
+         */
         patch: {
             parameters: {
                 query?: never;
@@ -1374,6 +1870,8 @@ export interface paths {
                         "application/json": components["schemas"]["MetricValue"];
                     };
                 };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
             };
         };
         trace?: never;
@@ -1855,7 +2353,7 @@ export interface components {
             actor_email?: string | null;
             actor_role?: string | null;
             /** @enum {string} */
-            type?: "comment" | "classify" | "status" | "clock" | "attest" | "chase";
+            type?: "comment" | "classify" | "status" | "attest" | "chase" | "marker" | "config" | "snapshot";
             from_value?: string | null;
             to_value?: string | null;
             body?: string | null;
@@ -1863,6 +2361,31 @@ export interface components {
             source?: "ui" | "email" | "ai" | "system";
             ai_processed?: boolean;
             ai_summary?: string | null;
+        };
+        Snapshot: {
+            /**
+             * @description <year>/<stamp>, the download path
+             * @example 2026/20270802T090000Z
+             */
+            id?: string;
+            service_year?: number;
+            /** Format: date-time */
+            taken_at?: string;
+        };
+        /** @description One start→stop pair of an SLA on a ticket (D21). */
+        SlaInstance: {
+            sla_id?: number;
+            name?: string;
+            metric_key?: string;
+            budget_days?: number;
+            /** Format: date-time */
+            start_at?: string;
+            /** Format: date-time */
+            stop_at?: string | null;
+            /** @description Working days elapsed (to stop */
+            days?: number;
+            /** @enum {string} */
+            outcome?: "met" | "breached" | "running";
         };
         /** @enum {string} */
         MetricMode: "binary" | "proportional";
@@ -1877,6 +2400,68 @@ export interface components {
             /** @enum {string} */
             source?: "auto" | "manual" | "survey";
             active?: boolean;
+            description?: string | null;
+        };
+        /**
+         * @description Start/stop kinds (common/sla.ts); ticket_created can only start.
+         * @enum {string}
+         */
+        SlaKind: "ticket_created" | "status" | "event_by" | "marker";
+        Sla: {
+            id: number;
+            name: string;
+            metric_key: string;
+            /** @description NULL = any category */
+            category: string | null;
+            /** @description NULL = any */
+            needs_contractor: boolean | null;
+            start_on: components["schemas"]["SlaKind"];
+            start_value: string | null;
+            stop_on: components["schemas"]["SlaKind"];
+            stop_value: string | null;
+            /** @description Working days */
+            budget_days: number;
+            /** @description Re-arm each time the start fires */
+            repeats: boolean;
+            active: boolean;
+            description: string | null;
+        };
+        SlaCreate: {
+            name: string;
+            metric_key: string;
+            category?: string | null;
+            needs_contractor?: boolean | null;
+            start_on: components["schemas"]["SlaKind"];
+            start_value?: string | null;
+            stop_on: components["schemas"]["SlaKind"];
+            stop_value?: string | null;
+            budget_days: number;
+            /** @default false */
+            repeats: boolean;
+            /** @default true */
+            active: boolean;
+            description?: string | null;
+        };
+        /** @description Any subset of SlaCreate. */
+        SlaUpdate: {
+            name?: string;
+            metric_key?: string;
+            category?: string | null;
+            needs_contractor?: boolean | null;
+            start_on?: components["schemas"]["SlaKind"];
+            start_value?: string | null;
+            stop_on?: components["schemas"]["SlaKind"];
+            stop_value?: string | null;
+            budget_days?: number;
+            repeats?: boolean;
+            active?: boolean;
+            description?: string | null;
+        };
+        ConfigEntry: {
+            key: string;
+            value: string;
+            /** Format: date-time */
+            updated_at: string | null;
         };
         MetricValue: {
             id?: number;
@@ -1901,6 +2486,8 @@ export interface components {
         /** @description On-demand computed fee projection (UJ-10). */
         Score: {
             service_year?: number;
+            /** @description The year hasn't ended; pending metrics count as met */
+            ongoing?: boolean;
             /** @description Σ(weight × result) */
             projected_fee_ratio?: number;
             domains?: {
@@ -1909,14 +2496,36 @@ export interface components {
                 weight?: number;
                 /** @description Weighted domain result */
                 result?: number;
-                metrics?: {
-                    key?: string;
-                    weight?: number;
-                    value?: number | null;
-                    result?: number | null;
-                    /** @description e.g. survey <50 responses */
-                    pending?: boolean;
-                }[];
+                metrics?: components["schemas"]["MetricScore"][];
+            }[];
+        };
+        MetricScore: {
+            key?: string;
+            /** @enum {string} */
+            source?: "auto" | "manual" | "survey";
+            weight?: number;
+            value?: number | null;
+            /** @description 0..1; pending → 1 while ongoing, else 0 */
+            result?: number;
+            /** @description No value yet, e.g. not entered or survey <50 responses */
+            pending?: boolean;
+            /** @description What the value rests on, e.g. '12 of 14 tickets on time' */
+            basis?: string;
+        };
+        /** @description One metric's score and the tickets it was computed from. */
+        MetricDetail: {
+            service_year?: number;
+            ongoing?: boolean;
+            metric?: components["schemas"]["MetricScore"];
+            /** @description Empty for manual and survey metrics. */
+            tickets?: {
+                id?: number;
+                title?: string;
+                /** Format: date-time */
+                created_at?: string;
+                /** @description Counted as met/failed; null while no SLA has finished */
+                passes?: boolean | null;
+                instances?: components["schemas"]["SlaInstance"][];
             }[];
         };
         MonthlyReport: {

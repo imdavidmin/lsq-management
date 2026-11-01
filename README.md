@@ -45,7 +45,7 @@ email is a separate `email` → queue → `ai` pipeline (D20).
   └───────────┬────────────┘
               ▼
       ┌──────────────┐   shared by all three Workers
-      │  D1 (SQLite) │   see schema.sql
+      │  D1 (SQLite) │   see migrations/0001_init.sql
       └──────────────┘
    cron (on server): daily chase + monthly report; scoring is on-demand.
 ```
@@ -80,7 +80,8 @@ push runs the FE build then deploys each Worker — no separate Pages project.
 - `web/` — frontend (Vite + React + Fluent UI).
 - `wrangler.jsonc` — the `server` Worker's config; `email/` and `ai/` have their own.
 - `migrations/` — D1 migrations (root; applied by wrangler and the test pool).
-- `schema.sql` — D1 schema (identity, tickets, audit spine, scoring, surveys).
+  `0001_init.sql` is the annotated schema (identity, tickets, audit spine,
+  scoring, surveys); `0002_seed.sql` the seed data.
 - `docs/requirements.md` — **the authoritative feature list + scoring rubric.**
 - `docs/architecture.md` — technical design: email flow, scoring engine, roles.
 - `docs/decisions.md` — settled design decisions and their rationale.
@@ -91,6 +92,43 @@ push runs the FE build then deploys each Worker — no separate Pages project.
 - `docs/sla-tracking.md` — **open** design question: how contractor/agent SLA
   clocks get computed from `events`, plus the manual scoring-exclusion escape hatch.
 - `docs/api.md` — route map by segment with permissions and UJ references.
+
+## Getting started
+
+```sh
+npm install              # root; hoists all workspaces
+npm run migrate:local    # apply migrations/ to the local D1
+npm run seed:dev         # optional: demo accounts, orgs, senders (server/dev-seed.sql)
+mkdir -p web/dist        # wrangler + the test pool expect it; `npm --workspace web run build` fills it
+npm run be               # API Worker (wrangler dev)
+npm run fe               # Vite frontend (second terminal)
+```
+
+**Local login bypass.** Skip the email OTP by creating `.dev.vars` in the repo
+root (gitignored):
+
+```
+DEV_LOGIN_EMAIL=alice@lansburysquare.co.uk
+```
+
+Restart `npm run be`; every request is signed in as that email. The account is
+created if missing and always gets a board/estate grant, so it sees everything
+(see `server/src/middleware/session.ts`). Seeded accounts:
+
+| Email                        | Role in dev seed   |
+| ---------------------------- | ------------------ |
+| `alice@lansburysquare.co.uk` | board, estate      |
+| `dave@dwellent.com`          | agent, estate      |
+| `bob@example.com`            | resident, unit 1   |
+| `carol@example.com`          | resident, unit 4   |
+
+To see a single role's real view, leave `DEV_LOGIN_EMAIL` unset and log in
+normally. Tests blank the variable, so the bypass never leaks into them.
+
+```sh
+npm test                 # vitest on real D1 (miniflare)
+npm run typecheck
+```
 
 ## Status
 

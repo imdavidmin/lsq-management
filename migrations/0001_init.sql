@@ -1,4 +1,5 @@
--- LSQ site-operations system — D1 schema (draft). Design rationale in docs/.
+-- LSQ site-operations system — D1 schema. Design rationale in docs/.
+-- The annotated data-model reference; seed data lives in 0002_seed.sql.
 
 ------------------------------------------------------------------- identity ---
 
@@ -30,7 +31,7 @@ CREATE TABLE roles (
 -- Privileges as data: permission strings per role.
 CREATE TABLE role_permissions (
   role_key    TEXT NOT NULL REFERENCES roles(key),
-  permission  TEXT NOT NULL,                 -- e.g. 'ticket:read','metric:dispute'
+  permission  TEXT NOT NULL,                 -- e.g. 'ticket:read','metric:enter'
   PRIMARY KEY (role_key, permission)
 );
 
@@ -118,15 +119,17 @@ CREATE TABLE tickets (
 -- 'metric_value' (board attestations/disputes) and others later, with no schema
 -- change. No DB-level FK on subject_id (it points at different tables by
 -- subject_type); the app validates the referent.
+-- ponytail: polymorphic ref, app-enforced integrity — the standard audit-log
+-- shape. Add a typed FK only if one subject table ever dominates enough to want it.
 CREATE TABLE events (
   id           INTEGER PRIMARY KEY,
-  subject_type TEXT NOT NULL DEFAULT 'ticket',  -- 'ticket' | 'metric_value' | ...
+  subject_type TEXT NOT NULL DEFAULT 'ticket',  -- 'ticket' | 'sla' | 'score' (id = year) | ...
   subject_id   INTEGER,                          -- id within subject_type; NULL = system-wide event
   at           TEXT NOT NULL,
   actor_id     INTEGER REFERENCES accounts(id), -- null if unknown email
   actor_email  TEXT,                            -- raw From when actor unknown
   actor_role   TEXT,                            -- resident|agent|admin|contractor|system
-  type         TEXT NOT NULL,                   -- comment|classify|status|clock|attest|chase
+  type         TEXT NOT NULL,                   -- comment|classify|status|marker|config|attest|chase|snapshot
   from_value   TEXT,
   to_value     TEXT,
   body         TEXT,
@@ -136,8 +139,9 @@ CREATE TABLE events (
 );
 CREATE INDEX idx_events_subject ON events(subject_type, subject_id, at);
 
--- Key/value site config: admin-editable markdown blobs. `site_info` holds the
--- estate contact-details page shown to all signed-in users.
+-- Key/value site config, admin-editable. `site_info` holds the estate
+-- contact-details markdown; `service_year_start` (MM-DD) and
+-- `contractor_reply_days` drive scoring (D21).
 CREATE TABLE config (
   key        TEXT PRIMARY KEY,
   value      TEXT NOT NULL,                    -- markdown
@@ -149,13 +153,14 @@ CREATE TABLE config (
 
 -- One row per sub-metric; weights sum to 1.0. Fee = Σ (weight × result).
 CREATE TABLE metrics (
-  key       TEXT PRIMARY KEY,                 -- 'fin.draft_accounts'
-  domain    TEXT NOT NULL,                    -- display label only
+  key       TEXT PRIMARY KEY,                 -- '<domain prefix>.<name>', see requirements.md
+  domain    TEXT NOT NULL,                    -- display label only; fixed by the key prefix
   weight    REAL NOT NULL,                    -- effective global weight
   mode      TEXT NOT NULL CHECK (mode IN ('binary','proportional')),
   threshold REAL,
   source    TEXT NOT NULL,                    -- auto|manual|survey
-  active    INTEGER NOT NULL DEFAULT 1
+  active    INTEGER NOT NULL DEFAULT 1,
+  description TEXT                            -- optional, free text
 );
 
 -- auto = computed on read; manual/survey = entered; latest per (key,year) wins.
@@ -171,6 +176,24 @@ CREATE TABLE metric_values (
   notes       TEXT
 );
 CREATE INDEX idx_metricval ON metric_values(metric_key, service_year, computed_at);
+
+-- SLA definitions (D21): evaluated on read against ticket events; never stored
+-- per ticket. Kinds/values follow common/sla.ts; seeded in 0002_seed.sql.
+CREATE TABLE slas (
+  id               INTEGER PRIMARY KEY,
+  name             TEXT NOT NULL,
+  metric_key       TEXT NOT NULL REFERENCES metrics(key),
+  category         TEXT,                 -- NULL = any category
+  needs_contractor INTEGER,              -- NULL = any; else 0/1
+  start_on         TEXT NOT NULL CHECK (start_on IN ('ticket_created','status','event_by','marker')),
+  start_value      TEXT,
+  stop_on          TEXT NOT NULL CHECK (stop_on IN ('status','event_by','marker')),
+  stop_value       TEXT,
+  budget_days      INTEGER NOT NULL CHECK (budget_days > 0),
+  repeats          INTEGER NOT NULL DEFAULT 0,
+  active           INTEGER NOT NULL DEFAULT 1,
+  description      TEXT                  -- optional, free text
+);
 
 -------------------------------------------------------------------- surveys ---
 

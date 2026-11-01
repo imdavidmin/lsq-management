@@ -181,3 +181,53 @@ sender. R2 carries the raw body because Queue messages cap at 128 KB (attachment
 Supersedes the earlier "one Worker, split later" note (api.md): the split landed
 now because the email budget and AI isolation justified it. Shared contracts live
 in `common/` (`queue.ts`, `roles.ts`).
+
+### D21 — SLAs are data, evaluated on read from ticket events
+
+An SLA is a row in `slas`: applies-to filter (category, `needs_contractor`) +
+start event + stop event + budget in working days + repeats? + the metric it
+feeds. Start/stop come from a small fixed vocabulary in `common/sla.ts`
+(`ticket_created`, `status`, `event_by` role group, `marker`). SLA instances are
+computed per request from `events` (D13) and never stored per ticket, so the
+reserved `clock` event type is unused. A metric's value is the share of tickets
+whose instances are **all** met. Signals the rubric needs that no action records
+today become `marker` events: `enquiry_sent` (inferred by the `ai` Worker when
+an agent emails a contractor with the ticket in CC), `contractor_no_reply`
+(injected by the daily cron after a configured number of working days), and
+`attended` (entered manually by the on-site team). SLA edits append `config`
+events on the spine. SLAs change only at service-year end; a mid-year edit
+re-scores the year, accepted. Scores cover only the current and previous
+service year (start date in the `config` table); the final figures are kept
+as a year-end snapshot in R2. **Why:** the board defines SLAs in the UI without
+a redeploy, the rubric fits one generic shape, and recomputing on read keeps a
+single code path for scoring, chasing and the ticket view. Supersedes the
+"start hard-coded" lean in `sla-tracking.md`. Worked traces per SLA:
+`docs/plan/plan-scoring-sla.md`.
+
+### D22 — Subjects can download their own `access_log` trail
+
+`GET /auth/me/access-log` returns the `access_log` rows where
+`resource_type = 'account'` and `resource_id` is the caller, joined to the
+reader's name, as a CSV attachment (opens in a spreadsheet). Self only, session-gated, no permission —
+like `/auth/me`. Shown from the `/my-account` page. **Why:** GDPR right of
+access — a resident should see who opened their personal record without asking
+the board. Narrows `gdpr.md`'s "no read surface": the app still cannot be used to
+read anyone *else's* trail, or to see what a given reader looked at, so the
+original concern (the audit trail on the app's own permission surface) holds.
+Covers account-record reads only; reads of tickets that mention the resident
+are not attributed to them and are not included.
+
+### D23 — The fee is a projection while the year runs
+
+`/score` treats a metric with no value yet — a manual metric not entered, a
+survey under its 50-response gate, an auto metric with no finished SLA
+instance — as **met** (result 1, flagged `pending`) while the service year is
+running, and as **0** once it has ended. Manual values are entered with
+`metric:enter`, but overriding an auto or survey metric is a board dispute and
+also needs `metric:dispute` (board/admin via `*`). Only the year just ended can
+be snapshotted. **Why:** mid-year, "what will the fee be if the agent delivers
+what's outstanding" is the useful number, and a value that's missing at year
+end should cost the agent rather than flatter them. The dispute permission stops
+the measured party overwriting its own computed score, without a role check in
+code (D18).
+

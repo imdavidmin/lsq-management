@@ -60,8 +60,9 @@ board member browsing a resident's unrelated tickets leaves a trail. It does not
 stop direct-DB reads (see residual risk).
 
 **Writer / reader.** The API middleware *writes* `access_log` on PII-bearing
-reads (it is not exposed as a request the app can suppress). There is **no API or
-FE surface to read it** — by design. Reviewing the log is a board tech-op:
+reads (it is not exposed as a request the app can suppress). The only read
+surface is self-service: a person can download the reads of **their own** account
+record from `/my-account` (D22). Reviewing the log otherwise is a board tech-op:
 whoever holds direct D1 access queries it out-of-band. This keeps the audit trail
 off the application's own permission surface (the app can't be used to read who
 audited whom) and matches the operating model where the board owns the DB.

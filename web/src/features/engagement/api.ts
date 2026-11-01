@@ -5,15 +5,6 @@ import type { SiteInfo, Survey, SurveyResponse } from "../../api/types";
 export const useSurveys = () =>
   useQuery({ queryKey: ["surveys"], queryFn: () => request<Survey[]>("/surveys") });
 
-export function useCreateSurvey() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (service_year: number) =>
-      request<Survey>("/surveys", { method: "POST", body: { service_year } }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["surveys"] }),
-  });
-}
-
 export function useSetSurveyClosed() {
   const qc = useQueryClient();
   return useMutation({
@@ -23,21 +14,11 @@ export function useSetSurveyClosed() {
   });
 }
 
-export const useResponses = (surveyId: number, enabled: boolean) =>
+export const useResponses = (surveyId: number) =>
   useQuery({
     queryKey: ["responses", surveyId],
     queryFn: () => request<SurveyResponse[]>(`/surveys/${surveyId}/responses`),
-    enabled,
   });
-
-export function useSubmitResponse(surveyId: number) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (answers: Record<string, number>) =>
-      request<SurveyResponse>(`/surveys/${surveyId}/responses`, { method: "POST", body: { answers } }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["surveys"] }),
-  });
-}
 
 export function useFlagOutlier(surveyId: number) {
   const qc = useQueryClient();
@@ -47,7 +28,11 @@ export function useFlagOutlier(surveyId: number) {
         method: "PATCH",
         body: { is_outlier },
       }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["responses", surveyId] }),
+    // Outlier counts on the survey change too.
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["responses", surveyId] });
+      void qc.invalidateQueries({ queryKey: ["surveys"] });
+    },
   });
 }
 

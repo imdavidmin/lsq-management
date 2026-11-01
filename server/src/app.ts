@@ -7,6 +7,7 @@ import { auth } from "./segments/auth/routes";
 import { tickets } from "./segments/tickets/routes";
 import { directory } from "./segments/directory/routes";
 import { engagement } from "./segments/engagement/routes";
+import { scoring } from "./segments/scoring/routes";
 
 export const app = new Hono<AppContext>();
 
@@ -26,6 +27,7 @@ api.route("/auth", auth); // segment routers mounted as each phase is delivered
 api.route("/tickets", tickets);
 api.route("/", directory); // accounts, grants, roles, buildings, units, orgs, senders
 api.route("/", engagement); // surveys, site info
+api.route("/", scoring); // metrics, SLAs, scoring settings
 app.route("/api", api);
 
 app.notFound((c) => {

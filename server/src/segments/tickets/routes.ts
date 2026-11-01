@@ -46,6 +46,8 @@ const patchSchema = z
   })
   .partial();
 const commentSchema = z.object({ body: z.string().min(1) });
+// Only `attended` is entered by hand; the other markers are system-inferred (D21).
+const markerSchema = z.object({ marker: z.enum(["attended"]), notes: z.string().trim().min(1) });
 const listSchema = z.object({
   status: z.enum(STATUSES).optional(),
   category: z.string().optional(),
@@ -122,5 +124,14 @@ tickets.post("/:id/events", requirePermission("ticket:comment", ticketScope), as
   if (!t) notFound("no such ticket");
   const account = c.get("account");
   const ev = await addComment(c.env, t!.id, account.id, primaryRole(c.get("grants")), text);
+  return c.json(serializeEvent(ev), 201);
+});
+
+tickets.post("/:id/markers", requirePermission("ticket:update", ticketScope), async (c) => {
+  const { marker, notes } = await body(c, markerSchema);
+  const t = await getTicket(c.env, idParam(c));
+  if (!t) notFound("no such ticket");
+  const account = c.get("account");
+  const ev = await addComment(c.env, t!.id, account.id, primaryRole(c.get("grants")), notes, marker);
   return c.json(serializeEvent(ev), 201);
 });

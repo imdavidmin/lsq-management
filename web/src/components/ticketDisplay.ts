@@ -53,7 +53,7 @@ export function lastEventLabel(e?: Event): string {
     case "comment": return "New comment";
     case "status": return e.to_value ? humanize(e.to_value) : "Status changed";
     case "classify": return "Classified";
-    case "clock": return e.to_value ? humanize(e.to_value) : "SLA clock";
+    case "marker": return humanize(e.to_value);
     case "attest": return "Attested";
     case "chase": return "Chased";
     default: return humanize(e.type ?? "Updated");

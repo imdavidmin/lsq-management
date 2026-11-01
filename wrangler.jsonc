@@ -29,6 +29,10 @@
       "migrations_dir": "migrations"
     }
   ],
+  // Year-end score snapshots (D21): the official figures once a service year ends.
+  "r2_buckets": [
+    { "binding": "SNAPSHOTS", "bucket_name": "lsq-score-snapshots" }
+  ],
   // No Workers AI binding here: this Worker does no AI. Ticket categories are
   // chosen by the creator (or left for an agent); the only AI use is inbound
   // email summarisation, which lives in the separate `lsq-ai` Worker.

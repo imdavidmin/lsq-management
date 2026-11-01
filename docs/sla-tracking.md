@@ -1,9 +1,9 @@
-# SLA & Contractor-Response Tracking — OPEN DESIGN QUESTION
+# SLA & Contractor-Response Tracking
 
-> **Status: not settled.** This is the hardest part of scoring and the least
-> designed. It captures what we know and what still needs deciding before the
-> Contractor Management and Resident & Board Service metrics can be computed. Do
-> not treat anything here as final.
+> **Status: core model settled (D21).** The design questions below are answered
+> in "Settled by D21"; implementation is tracked in
+> [plan/plan-scoring-sla.md](plan/plan-scoring-sla.md). The manual scoring exclusion is
+> still open.
 
 ## The problem
 
@@ -24,27 +24,25 @@ derived from `events`, not stored as bespoke columns.
 
 - `events.actor_role` (resident|agent|admin|contractor|system) — tells us *who*
   moved a ticket, which is the basis for "agent replied", "contractor replied".
-- `events.type = 'clock'` — reserved for SLA clock stamps (see
-  [architecture.md](architecture.md) inbound flow: "update SLA clocks implied by
-  actor_role").
+- `events.type = 'clock'` — originally reserved for SLA clock stamps; unused
+  under D21.
 - The daily Cron chase pass (D14) already sweeps open tickets — the natural place
   to *detect* a breached/near-deadline clock and stamp/notify.
 
-## What still needs deciding
+## Settled by D21
 
-1. **Clock definitions as data or code?** One row per SLA rule (start trigger,
-   responder role, working-day budget, stop condition) would keep it configurable
-   like metrics. Or hard-code the ~6 clocks. Lean toward: start hard-coded, lift
-   to config only if the rules churn.
-2. **"Agent response expected" / "needs off-site contractor"** are judgement
-   calls. `needs_contractor` flag covers one; the rest may need an agent-set flag
-   or an inferred signal. Undecided.
-3. **Where the clock state lives.** Recompute-on-read (consistent with on-demand
-   scoring, D13) vs. materialised `clock` events written by the daily pass. The
-   chase pass has to stamp *something* to notify on breach, so likely a hybrid:
-   `clock` events for breaches, live recompute for the score.
-4. **Working-day arithmetic** against the holiday + cleaning-schedule JSON config
-   — shared helper, needs to be written and tested once.
+1. **Definitions are data.** One `slas` row per rule (filter, start, stop,
+   working-day budget, repeats), edited in the UI.
+2. **Judgement signals become markers.** `enquiry_sent` is inferred from agent
+   email CC'ing a contractor, `contractor_no_reply` is injected by the cron,
+   `attended` is entered by the on-site team. "Agent response expected" = any
+   contractor event starts a staff-reply SLA.
+3. **State is recomputed on read**, no `clock` events. The cron only stamps
+   `contractor_no_reply` markers and chases.
+4. **Working-day arithmetic** is `server/src/lib/workdays.ts` (holidays only;
+   the cleaning schedule is parked, see [plan/parked.md](plan/parked.md)).
+
+Plan and worked traces per SLA: [plan/plan-scoring-sla.md](plan/plan-scoring-sla.md).
 
 ## Manual exclusion escape hatch
 
@@ -57,10 +55,10 @@ on the audit spine, so a scoring query skips it.
 Open: is exclusion all-or-nothing per ticket, or per-metric? Does it need board
 attestation like a metric dispute? Shape not settled — add the column
 (`tickets.excluded_from_scoring` + a `classify`/new event for the reason) only
-once we've picked the granularity. Deliberately not in `schema.sql` yet.
+once we've picked the granularity. Deliberately not in `migrations/0001_init.sql` yet.
 
 ## Next step
 
-Spike one clock end-to-end (cleaning "1 working day") over real trial data before
-generalising. The trial (see the provisional-category note in
-[requirements.md](requirements.md)) will also tell us which clocks actually matter.
+Validate the seeded SLAs against real trial data (see the provisional-category
+note in [requirements.md](requirements.md)); the trial will show which SLAs
+actually matter and whether the budgets hold.

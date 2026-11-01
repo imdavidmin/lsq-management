@@ -90,4 +90,22 @@ describe("ai Worker — processInbound", () => {
     await worker.queue!(batch, h.env);
     expect(acked).toBe(true);
   });
+
+  it("marks enquiry_sent when an agent emails a contractor, not when a resident does", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO tickets (id, title, status, classified_by, created_at) VALUES (1235, 'Door', 'open', 'agent', '2026-11-02')"),
+      env.DB.prepare("INSERT INTO organizations (id, name, kind) VALUES (90, 'Fixit', 'contractor')"),
+      env.DB.prepare("INSERT INTO senders (match_type, match_value, org_id, status, first_seen, last_seen) VALUES ('domain', 'fixit.co.uk', 90, 'linked', 'x', 'x')"),
+      env.DB.prepare("INSERT INTO accounts (id, email, name) VALUES (91, 'sam@agentco.co.uk', 'Sam')"),
+      env.DB.prepare("INSERT INTO grants (account_id, role_key, scope_type, scope_id) VALUES (91, 'agent', 'estate', NULL)"),
+    ]);
+    const raw = "From: x\r\nTo: Info <info@fixit.co.uk>\r\nCc: 1235@lansburysquare.co.uk\r\n\r\nPlease attend.";
+    const markers = async () => (await eventsFor(1235)).filter((e) => e.type === "marker");
+
+    await processInbound(makeEnv({ r1: raw }).env, { ticketId: 1235, from: "sam@agentco.co.uk", subject: "s", rawKey: "r1" });
+    expect((await markers()).map((e) => [e.to_value, e.actor_role])).toEqual([["enquiry_sent", "agent"]]);
+
+    await processInbound(makeEnv({ r2: raw }).env, { ticketId: 1235, from: "res@lsq.test", subject: "s", rawKey: "r2" });
+    expect((await markers()).length).toBe(1);
+  });
 });

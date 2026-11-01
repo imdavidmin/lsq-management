@@ -3,14 +3,20 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Avatar,
   Button,
+  Menu,
+  MenuItemRadio,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
   Text,
-  Title3,
   makeStyles,
   mergeClasses,
   tokens,
 } from "@fluentui/react-components";
 import {
+  Accessibility24Regular,
   ClipboardTaskListLtr24Regular,
+  DarkTheme24Regular,
   DataTrending24Regular,
   Info24Regular,
   PanelLeftContract24Regular,
@@ -22,7 +28,9 @@ import {
   WeatherSunny24Regular,
 } from "@fluentui/react-icons";
 import { useAuth, usePermissions } from "../auth/AuthProvider";
-import { useThemeMode } from "../theme-provider";
+import { useThemeMode, type ThemeMode } from "../theme-provider";
+import "@fontsource/fraunces/600.css";
+import "@fontsource/instrument-sans/500.css";
 
 // Nav is a static list; each entry is shown only if the caller holds one of its
 // permissions. Server still enforces every route (D18).
@@ -38,6 +46,13 @@ const NAV: { label: string; to: string; icon: ReactNode; anyOf: string[] }[] = [
   { label: "Surveys", to: "/surveys", icon: <ClipboardTaskListLtr24Regular />, anyOf: ["survey:read", "survey:respond"] },
   { label: "Site info", to: "/site-info", icon: <Info24Regular />, anyOf: ["config:read"] },
 ];
+
+const THEMES: Record<ThemeMode, { label: string; icon: JSX.Element }> = {
+  auto: { label: "Automatic", icon: <DarkTheme24Regular /> },
+  light: { label: "Light", icon: <WeatherSunny24Regular /> },
+  dark: { label: "Dark", icon: <WeatherMoon24Regular /> },
+  contrast: { label: "High contrast", icon: <Accessibility24Regular /> },
+};
 
 const useStyles = makeStyles({
   root: {
@@ -58,6 +73,47 @@ const useStyles = makeStyles({
     overflow: "hidden",
   },
   header: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: tokens.spacingHorizontalS },
+  headerCollapsed: { flexDirection: "column" },
+  brand: {
+    display: "flex",
+    alignItems: "center",
+    gap: tokens.spacingHorizontalS,
+    minWidth: 0,
+    ":hover > span:first-child": { filter: "saturate(1.4) brightness(1.1)" },
+  },
+  // The logo file is only the shape (mask); the colour is a live CSS conic-gradient so it can animate.
+  mark: {
+    width: "32px",
+    height: "32px",
+    flexShrink: 0,
+    backgroundImage: "conic-gradient(from 135deg, #642d09, #f3b896)",
+    maskImage: "url(/logo.svg)",
+    WebkitMaskImage: "url(/logo.svg)",
+    maskSize: "contain",
+    WebkitMaskSize: "contain",
+    transition: "filter 200ms ease",
+    // Remounted on collapse/expand (keyed), so this plays on every toggle.
+    animationName: {
+      "50%": { filter: "saturate(1.5) brightness(1.12)" },
+    },
+    animationDuration: "400ms",
+    animationTimingFunction: "ease-out",
+    "@media (prefers-reduced-motion: reduce)": { animationName: "none", transition: "none" },
+  },
+  wordmark: { display: "flex", flexDirection: "column", lineHeight: 1.1, whiteSpace: "nowrap" },
+  wordmarkName: {
+    fontFamily: "Fraunces, Georgia, serif",
+    fontWeight: 600,
+    fontSize: "20px",
+    color: tokens.colorNeutralForeground1,
+  },
+  wordmarkSub: {
+    fontFamily: '"Instrument Sans", system-ui, sans-serif',
+    fontWeight: 500,
+    fontSize: "10px",
+    letterSpacing: "0.35em",
+    color: tokens.colorNeutralForeground3,
+  },
   nav: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalXS, flex: 1 },
   link: {
     display: "flex",
@@ -68,6 +124,15 @@ const useStyles = makeStyles({
     padding: `${tokens.spacingVerticalS} ${tokens.spacingHorizontalM}`,
     borderRadius: tokens.borderRadiusMedium,
     whiteSpace: "nowrap",
+  },
+  // Resets <button> so the theme trigger matches the nav links.
+  linkButton: {
+    border: "none",
+    background: "none",
+    font: "inherit",
+    cursor: "pointer",
+    textAlign: "left",
+    ":hover": { backgroundColor: tokens.colorSubtleBackgroundHover },
   },
   linkCollapsed: { justifyContent: "center", gap: 0, padding: tokens.spacingVerticalS },
   linkActive: {
@@ -85,6 +150,7 @@ const useStyles = makeStyles({
   },
   labelHidden: { opacity: 0, maxWidth: 0 },
   user: { display: "flex", alignItems: "center", gap: tokens.spacingHorizontalS, minHeight: "32px" },
+  userButton: { flex: 1, justifyContent: "flex-start", minWidth: 0 },
   main: { padding: tokens.spacingVerticalXXL, overflow: "auto" },
 });
 
@@ -92,7 +158,7 @@ export function AppShell() {
   const s = useStyles();
   const { identity, logout } = useAuth();
   const { hasAny } = usePermissions();
-  const { dark, toggle } = useThemeMode();
+  const { mode, setMode } = useThemeMode();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -107,8 +173,16 @@ export function AppShell() {
   return (
     <div className={mergeClasses(s.root, collapsed && s.rootCollapsed)}>
       <aside className={s.side}>
-        <div className={s.header}>
-          {!collapsed && <Title3>Lansbury Square</Title3>}
+        <div className={mergeClasses(s.header, collapsed && s.headerCollapsed)}>
+          <div className={s.brand} role="img" aria-label="Lansbury Square">
+            <span key={String(collapsed)} className={s.mark} />
+            {!collapsed && (
+              <span className={s.wordmark}>
+                <span className={s.wordmarkName}>Lansbury</span>
+                <span className={s.wordmarkSub}>SQUARE</span>
+              </span>
+            )}
+          </div>
           <Button
             appearance="subtle"
             icon={collapsed ? <PanelLeftExpand24Regular /> : <PanelLeftContract24Regular />}
@@ -132,17 +206,43 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
-        <Button
-          appearance="subtle"
-          icon={dark ? <WeatherSunny24Regular /> : <WeatherMoon24Regular />}
-          aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
-          onClick={toggle}
-        />
+        <Menu
+          checkedValues={{ theme: [mode] }}
+          onCheckedValueChange={(_, d) => setMode(d.checkedItems[0] as ThemeMode)}
+        >
+          <MenuTrigger disableButtonEnhancement>
+            <button
+              type="button"
+              title={collapsed ? `Theme: ${THEMES[mode].label}` : undefined}
+              className={mergeClasses(s.link, s.linkButton, collapsed && s.linkCollapsed)}
+            >
+              <span className={s.icon}>{THEMES[mode].icon}</span>
+              <span className={labelCls}>Theme: {THEMES[mode].label}</span>
+            </button>
+          </MenuTrigger>
+          <MenuPopover>
+            <MenuList>
+              {(Object.keys(THEMES) as ThemeMode[]).map((m) => (
+                <MenuItemRadio key={m} name="theme" value={m} icon={THEMES[m].icon}>
+                  {THEMES[m].label}
+                </MenuItemRadio>
+              ))}
+            </MenuList>
+          </MenuPopover>
+        </Menu>
         <div className={s.user}>
-          <Avatar name={identity?.account?.name} size={28} />
+          <Button
+            appearance="subtle"
+            className={s.userButton}
+            icon={<Avatar name={identity?.account?.name} size={28} />}
+            aria-label={`My account: ${identity?.account?.name ?? ""}`}
+            title="My account"
+            onClick={() => navigate("/my-account")}
+          >
+            {!collapsed && <Text size={200}>{identity?.account?.name}</Text>}
+          </Button>
           {!collapsed && (
             <>
-              <Text size={200}>{identity?.account?.name}</Text>
               <Button
                 appearance="subtle"
                 icon={<SignOut24Regular />}

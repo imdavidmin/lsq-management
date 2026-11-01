@@ -6,10 +6,19 @@ export class ApiError extends Error {
   status: number;
   code: string;
   constructor(status: number, code: string, message?: string) {
-    super(message ?? code);
+    super(message ?? friendlyMessage(status));
     this.status = status;
     this.code = code;
   }
+}
+
+// Shown when the server sends only a code (e.g. "internal", bare "not_found").
+function friendlyMessage(status: number): string {
+  if (status === 403) return "You don't have permission to do that.";
+  if (status === 404) return "We couldn't find what you were looking for.";
+  if (status === 429) return "Too many requests. Please wait a moment and try again.";
+  if (status >= 500) return "Something went wrong on our side. Please try again.";
+  return "Something went wrong. Please try again.";
 }
 
 // Set by AuthProvider so a 401 anywhere kicks the user back to login.

@@ -1,7 +1,7 @@
 # Requirements & Features
 
 Authoritative spec. The scoring rubric here is the source of truth for the
-`metrics` table in `schema.sql`.
+`metrics` rows seeded in `migrations/0002_seed.sql`.
 
 ## Functional features
 
@@ -113,8 +113,8 @@ ending in a completed state.
 **UJ-02 — Update a ticket (web UI)**
 
 1. User opens a ticket they can see and types a comment / changes status.
-2. Submits. System appends an `events` row (`source=ui`) and updates any
-   SLA clock implied by the actor's role.
+2. Submits. System appends an `events` row (`source=ui`); SLA status is
+   derived from it on read (D21).
 3. Done: the new event shows in the ticket timeline immediately.
 
 **UJ-03 — Update a ticket by email (CC)**
@@ -125,7 +125,8 @@ ending in a completed state.
    such ticket — email cannot create tickets).
 3. Worker resolves the From address (UJ-04) to attribute the update, runs AI
    summary unless "no ai" is in the subject (UJ-16), appends a `comment` event
-   (`source=email`), updates SLA clocks.
+   (`source=email`), plus an `enquiry_sent` marker when an agent mails a
+   contractor (D21).
 4. Done: the reply appears in the ticket timeline, attributed to the sender's
    role.
 
@@ -197,7 +198,8 @@ ending in a completed state.
 1. Board or agent opens the **Performance** dashboard.
 2. System computes metrics on-demand (query over `tickets`/`events` + latest
    manual/survey `metric_values`, applying working-day calendars) and projects
-   the fee = Σ (weight × result) over all metrics.
+   the fee = Σ (weight × result) over all metrics. In an ongoing service year,
+   manual/survey metrics not yet scored are assumed met (shown as pending).
 3. Done: current projected fee + per-domain, per-metric breakdown shown, no
    caching.
 
@@ -348,3 +350,19 @@ outliers at board discretion.
 > domain% × sub-% (all rows sum to 1.0); the domain weight is derived as the sum
 > of its rows, so there is one source of truth. Weights are tentative and live in
 > the table, so they change without a redeploy.
+
+**Metric keys.** A metric key is `<prefix>.<name>`. The prefix fixes the domain,
+and the two must agree whenever a metric is added:
+
+| Prefix | `domain`     | Rubric section              |
+| ------ | ------------ | --------------------------- |
+| `fin`  | `financial`  | Financial Management        |
+| `gov`  | `governance` | Governance & Administration |
+| `site` | `site`       | Site Management             |
+| `con`  | `contractor` | Contractor Management       |
+| `res`  | `resident`   | Resident & Board Service    |
+| `proj` | `projects`   | Projects Execution          |
+
+`<name>` is snake_case; the UI derives the metric's label from it
+(`con.hiu_servicing` → "HIU servicing", `common/strings.ts`). A metric may
+also carry an optional free-text `description`.

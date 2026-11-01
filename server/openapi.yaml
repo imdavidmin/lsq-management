@@ -29,7 +29,7 @@ tags:
   - name: directory
     description: Accounts, grants, roles, buildings/units, orgs, senders (server segment)
   - name: scoring
-    description: Performance fee, metric config/values, reports (server segment)
+    description: Performance fee, metric config/values, SLAs, scoring settings, reports (server segment)
   - name: engagement
     description: Surveys and site information (server segment)
 
@@ -101,6 +101,21 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Identity" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/me/access-log:
+    get:
+      tags: [auth]
+      summary: Who has read the caller's own account PII (GDPR subject access, D22)
+      description: >
+        access_log rows where resource_type=account and resource_id is the
+        caller. Self only; served as a CSV attachment with columns
+        at, action (view|list|export), by (reader's name), detail (JSON, e.g.
+        revealed fields).
+      responses:
+        "200":
+          content:
+            text/csv:
+              schema: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   # ------------------------------------------------------------- tickets ---
@@ -245,6 +260,34 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Event" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tickets/{id}/markers:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    post:
+      tags: [tickets]
+      summary: Record a manual SLA marker (D21)
+      description: >
+        Permission ticket:update. Only `attended` (contractor attended site) is
+        entered by hand; `enquiry_sent` and `contractor_no_reply` are inferred
+        by the system. The notes go in the event body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [marker, notes]
+              properties:
+                marker: { type: string, enum: [attended] }
+                notes: { type: string, minLength: 1 }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
   # ----------------------------------------------------------- directory ---
@@ -585,20 +628,114 @@ paths:
     get:
       tags: [scoring]
       summary: Live performance fee and breakdown
-      description: Computed on-demand (UJ-10). No caching.
+      description: >
+        Computed on-demand (UJ-10, D13). No caching. Only the ongoing and the
+        just-ended service year can be scored; older years are a 400 (their
+        figures live in the year-end snapshot). In the ongoing year a metric
+        with no value yet is assumed met (result 1, `pending`).
       parameters:
         - {
             in: query,
             name: year,
             schema: { type: integer },
-            description: Service year; defaults to current,
+            description: Service year (labelled by the year it starts in); defaults to current,
           }
       responses:
         "200":
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Score" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /score/metrics/{key}:
+    parameters:
+      - { in: path, name: key, required: true, schema: { type: string, example: res.ticket_acknowledgement } }
+    get:
+      tags: [scoring]
+      summary: How one metric's score was arrived at, with its tickets
+      description: >
+        Permission score:read. Same evaluation and year rules as /score. For an
+        SLA metric, every ticket an SLA applies to with its verdict and
+        instances; for site inspection, the defect tickets (passes = raised by
+        staff). A board dispute overrides the value, but the tickets are still listed.
+      parameters:
+        - { in: query, name: year, schema: { type: integer } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetricDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /score/snapshots:
+    get:
+      tags: [scoring]
+      summary: List year-end score snapshots, newest first (D21)
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                { type: array, items: { $ref: "#/components/schemas/Snapshot" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [scoring]
+      summary: Freeze the just-ended service year's score to R2 (D21)
+      description: >
+        Permission score:snapshot. Only the service year that has just ended is
+        accepted. Writes the score, metric and SLA definitions, the year's SLA
+        edits and every ticket's SLA instances, and appends a `snapshot` event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [year]
+              properties:
+                year: { type: integer }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/Snapshot" }
+                  - type: object
+                    properties:
+                      projected_fee_ratio: { type: number }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /score/snapshots/{year}/{stamp}:
+    parameters:
+      - { in: path, name: year, required: true, schema: { type: integer } }
+      - { in: path, name: stamp, required: true, schema: { type: string, example: 20270802T090000Z } }
+    get:
+      tags: [scoring]
+      summary: Download one snapshot (JSON attachment)
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /tickets/{id}/slas:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    get:
+      tags: [scoring]
+      summary: The ticket's SLA instances, evaluated now (D21)
+      description: Permission sla:read, scoped to the ticket. Computed on read, never stored.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                { type: array, items: { $ref: "#/components/schemas/SlaInstance" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /metrics:
     get:
       tags: [scoring]
@@ -609,32 +746,138 @@ paths:
             application/json:
               schema:
                 { type: array, items: { $ref: "#/components/schemas/Metric" } }
-  /metrics/{key}:
-    parameters:
-      - { in: path, name: key, required: true, schema: { type: string } }
     patch:
       tags: [scoring]
-      summary: Edit weight / mode / threshold / active (D6)
+      summary: Bulk-edit weight / mode / threshold / active / description (D6)
+      description: >
+        Permission metric:manage. Patches are merged onto the stored table and
+        applied together only if the result passes the whole-table rules:
+        active weights sum to 1, each weight is 0..1, and a proportional
+        metric's threshold is in (0, 1]. A 400's `message` lists one problem
+        per line. Returns the full table.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required: [key]
+                properties:
+                  key: { type: string }
+                  weight: { type: number }
+                  mode: { $ref: "#/components/schemas/MetricMode" }
+                  threshold: { type: number, nullable: true }
+                  active: { type: boolean }
+                  description: { type: string, nullable: true }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                { type: array, items: { $ref: "#/components/schemas/Metric" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /slas:
+    get:
+      tags: [scoring]
+      summary: SLA definitions (D21)
+      description: Permission sla:read. Evaluated on read against ticket events; never stored per ticket.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                { type: array, items: { $ref: "#/components/schemas/Sla" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [scoring]
+      summary: Create an SLA
+      description: >
+        Permission sla:manage. `metric_key` must be an auto metric; start/stop
+        values must fit their kind (common/sla.ts). Appends a `config` event
+        (subject_type=sla) to the audit spine.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SlaCreate" }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sla" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /slas/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    patch:
+      tags: [scoring]
+      summary: Edit or (de)activate an SLA
+      description: >
+        Permission sla:manage. Any subset of SlaCreate fields; the merged row is
+        validated as on create. No delete — set active=false. Appends a `config`
+        event with the old and new row as JSON.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SlaUpdate" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Sla" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /config:
+    get:
+      tags: [scoring]
+      summary: Scoring settings
+      description: >
+        Permission config:read. Only the scoring keys (service_year_start,
+        contractor_reply_days); site_info has its own route.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                { type: array, items: { $ref: "#/components/schemas/ConfigEntry" } }
+  /config/{key}:
+    parameters:
+      - { in: path, name: key, required: true, schema: { type: string, enum: [service_year_start, contractor_reply_days] } }
+    put:
+      tags: [scoring]
+      summary: Set a scoring setting
+      description: >
+        Permission config:manage. service_year_start is MM-DD;
+        contractor_reply_days is a positive integer (working days).
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              properties:
-                weight: { type: number }
-                mode: { $ref: "#/components/schemas/MetricMode" }
-                threshold: { type: number, nullable: true }
-                active: { type: boolean }
+              required: [value]
+              properties: { value: { type: string } }
       responses:
         "200":
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Metric" }
+              schema: { $ref: "#/components/schemas/ConfigEntry" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /metric-values:
     get:
       tags: [scoring]
       summary: Manual/computed metric values
+      description: Permission metric:read. All stored rows, newest first; latest per (metric, year) wins.
       parameters:
         - { in: query, name: year, schema: { type: integer } }
         - { in: query, name: metric, schema: { type: string } }
@@ -652,7 +895,10 @@ paths:
       summary: Enter a manual value, or dispute (superseding insert)
       description: >
         Admin/agent manual entry (UJ-15) and board dispute (UJ-08) are the same
-        operation — a new row; latest per (metric, year) wins.
+        operation — a new row; latest per (metric, year) wins. Permission
+        metric:enter; overriding an auto or survey metric also needs
+        metric:dispute (board). The server derives `result` from the metric's
+        mode and threshold. Only the ongoing or just-ended service year.
       requestBody:
         required: true
         content:
@@ -663,17 +909,23 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MetricValue" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /metric-values/{id}/attest:
     parameters:
       - { in: path, name: id, required: true, schema: { type: integer } }
     patch:
       tags: [scoring]
       summary: Board sign-off on a value (UJ-15)
+      description: Permission metric:attest. Appends an `attest` event on the value.
       responses:
         "200":
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MetricValue" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /reports/monthly:
     get:
       tags: [scoring]
@@ -1049,7 +1301,7 @@ components:
         type:
           {
             type: string,
-            enum: [comment, classify, status, clock, attest, chase],
+            enum: [comment, classify, status, attest, chase, marker, config, snapshot],
           }
         from_value: { type: string, nullable: true }
         to_value: { type: string, nullable: true }
@@ -1057,6 +1309,26 @@ components:
         source: { type: string, enum: [ui, email, ai, system] }
         ai_processed: { type: boolean }
         ai_summary: { type: string, nullable: true }
+
+    Snapshot:
+      type: object
+      properties:
+        id: { type: string, description: "<year>/<stamp>, the download path", example: 2026/20270802T090000Z }
+        service_year: { type: integer }
+        taken_at: { type: string, format: date-time }
+
+    SlaInstance:
+      type: object
+      description: One start→stop pair of an SLA on a ticket (D21).
+      properties:
+        sla_id: { type: integer }
+        name: { type: string }
+        metric_key: { type: string }
+        budget_days: { type: integer }
+        start_at: { type: string, format: date-time }
+        stop_at: { type: string, format: date-time, nullable: true }
+        days: { type: integer, description: Working days elapsed (to stop, or to now if open) }
+        outcome: { type: string, enum: [met, breached, running] }
 
     MetricMode:
       type: string
@@ -1075,6 +1347,67 @@ components:
         threshold: { type: number, nullable: true }
         source: { type: string, enum: [auto, manual, survey] }
         active: { type: boolean }
+        description: { type: string, nullable: true }
+    SlaKind:
+      type: string
+      enum: [ticket_created, status, event_by, marker]
+      description: Start/stop kinds (common/sla.ts); ticket_created can only start.
+    Sla:
+      type: object
+      required: [id, name, metric_key, category, needs_contractor, start_on, start_value, stop_on, stop_value, budget_days, repeats, active, description]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        metric_key: { type: string }
+        category: { type: string, nullable: true, description: NULL = any category }
+        needs_contractor: { type: boolean, nullable: true, description: NULL = any }
+        start_on: { $ref: "#/components/schemas/SlaKind" }
+        start_value: { type: string, nullable: true }
+        stop_on: { $ref: "#/components/schemas/SlaKind" }
+        stop_value: { type: string, nullable: true }
+        budget_days: { type: integer, minimum: 1, description: Working days }
+        repeats: { type: boolean, description: Re-arm each time the start fires }
+        active: { type: boolean }
+        description: { type: string, nullable: true }
+    SlaCreate:
+      type: object
+      required: [name, metric_key, start_on, stop_on, budget_days]
+      properties:
+        name: { type: string }
+        metric_key: { type: string }
+        category: { type: string, nullable: true }
+        needs_contractor: { type: boolean, nullable: true }
+        start_on: { $ref: "#/components/schemas/SlaKind" }
+        start_value: { type: string, nullable: true }
+        stop_on: { $ref: "#/components/schemas/SlaKind" }
+        stop_value: { type: string, nullable: true }
+        budget_days: { type: integer, minimum: 1 }
+        repeats: { type: boolean, default: false }
+        active: { type: boolean, default: true }
+        description: { type: string, nullable: true }
+    SlaUpdate:
+      type: object
+      description: Any subset of SlaCreate.
+      properties:
+        name: { type: string }
+        metric_key: { type: string }
+        category: { type: string, nullable: true }
+        needs_contractor: { type: boolean, nullable: true }
+        start_on: { $ref: "#/components/schemas/SlaKind" }
+        start_value: { type: string, nullable: true }
+        stop_on: { $ref: "#/components/schemas/SlaKind" }
+        stop_value: { type: string, nullable: true }
+        budget_days: { type: integer, minimum: 1 }
+        repeats: { type: boolean }
+        active: { type: boolean }
+        description: { type: string, nullable: true }
+    ConfigEntry:
+      type: object
+      required: [key, value, updated_at]
+      properties:
+        key: { type: string }
+        value: { type: string }
+        updated_at: { type: string, format: date-time, nullable: true }
     MetricValue:
       type: object
       properties:
@@ -1100,6 +1433,8 @@ components:
       description: On-demand computed fee projection (UJ-10).
       properties:
         service_year: { type: integer }
+        ongoing:
+          { type: boolean, description: "The year hasn't ended; pending metrics count as met" }
         projected_fee_ratio:
           { type: number, description: Σ(weight × result), 0..1 }
         domains:
@@ -1117,15 +1452,40 @@ components:
                 { type: number, description: Weighted domain result, 0..1 }
               metrics:
                 type: array
-                items:
-                  type: object
-                  properties:
-                    key: { type: string }
-                    weight: { type: number }
-                    value: { type: number, nullable: true }
-                    result: { type: number, nullable: true }
-                    pending:
-                      { type: boolean, description: e.g. survey <50 responses }
+                items: { $ref: "#/components/schemas/MetricScore" }
+    MetricScore:
+      type: object
+      properties:
+        key: { type: string }
+        source: { type: string, enum: [auto, manual, survey] }
+        weight: { type: number }
+        value: { type: number, nullable: true }
+        result: { type: number, description: "0..1; pending → 1 while ongoing, else 0" }
+        pending:
+          { type: boolean, description: "No value yet, e.g. not entered or survey <50 responses" }
+        basis:
+          { type: string, description: "What the value rests on, e.g. '12 of 14 tickets on time'" }
+    MetricDetail:
+      type: object
+      description: One metric's score and the tickets it was computed from.
+      properties:
+        service_year: { type: integer }
+        ongoing: { type: boolean }
+        metric: { $ref: "#/components/schemas/MetricScore" }
+        tickets:
+          type: array
+          description: Empty for manual and survey metrics.
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              title: { type: string }
+              created_at: { type: string, format: date-time }
+              passes:
+                { type: boolean, nullable: true, description: "Counted as met/failed; null while no SLA has finished" }
+              instances:
+                type: array
+                items: { $ref: "#/components/schemas/SlaInstance" }
     MonthlyReport:
       type: object
       properties:

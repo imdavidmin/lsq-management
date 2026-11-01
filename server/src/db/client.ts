@@ -34,7 +34,7 @@ export async function run(
     .run();
 }
 
-// Row shapes shared across segments (mirror schema.sql).
+// Row shapes shared across segments (mirror migrations/0001_init.sql).
 export interface Account {
   id: number;
   email: string;

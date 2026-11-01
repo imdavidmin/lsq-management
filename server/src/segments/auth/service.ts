@@ -113,3 +113,14 @@ export async function permissionsFor(env: Env, accountId: number): Promise<strin
   );
   return rows.map((r) => r.permission).sort();
 }
+
+// GDPR subject access: who read this account's PII, oldest first (D22).
+export const accessLogFor = (env: Env, accountId: number) =>
+  all<{ at: string; action: string; by: string; detail: string | null }>(
+    env.DB,
+    `SELECT l.at, l.action, a.name AS by, l.detail
+       FROM access_log l JOIN accounts a ON a.id = l.account_id
+      WHERE l.resource_type = 'account' AND l.resource_id = ?
+      ORDER BY l.id`,
+    String(accountId)
+  );

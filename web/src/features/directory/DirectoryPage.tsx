@@ -33,12 +33,9 @@ import {
   tokens,
 } from "@fluentui/react-components";
 import { Dismiss20Regular, Eye20Regular, PeopleTeam20Regular, PersonAdd20Regular } from "@fluentui/react-icons";
-import { AllCommunityModule, ModuleRegistry, colorSchemeDark, colorSchemeLight, themeQuartz, type ColDef } from "ag-grid-community";
+import type { ColDef } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
-
-ModuleRegistry.registerModules([AllCommunityModule]);
-const agThemeDark = themeQuartz.withPart(colorSchemeDark);
-const agThemeLight = themeQuartz.withPart(colorSchemeLight);
+import { agTheme } from "../../lib/grid";
 import { usePermissions } from "../../auth/AuthProvider";
 import { useThemeMode } from "../../theme-provider";
 import { Can } from "../../auth/Can";
@@ -270,7 +267,7 @@ function AccountsPanel() {
       ) : (
         <div className={s.grid}>
           <AgGridReact<AccountRow>
-            theme={dark ? agThemeDark : agThemeLight}
+            theme={agTheme(dark)}
             rowData={rows}
             columnDefs={cols}
             defaultColDef={{ sortable: true, filter: true, resizable: true }}

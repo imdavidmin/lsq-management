@@ -28,6 +28,27 @@ function extractText(raw: string): string {
 
 const domainOf = (email: string) => email.slice(email.lastIndexOf("@") + 1).toLowerCase();
 
+// Addresses in the To/Cc headers (folded lines joined), lowercased.
+function recipients(raw: string): string[] {
+  const split = raw.search(/\r?\n\r?\n/);
+  const headers = (split >= 0 ? raw.slice(0, split) : raw).replace(/\r?\n[ \t]+/g, " ");
+  const lines = headers.split(/\r?\n/).filter((l) => /^(to|cc):/i.test(l));
+  return lines.flatMap((l) => l.match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g) ?? []).map((e) => e.toLowerCase());
+}
+
+// A contractor by sender rule, email before domain (same precedence as resolveSender).
+async function isContractor(env: Env, email: string): Promise<boolean> {
+  const rule = await one<{ kind: string | null }>(
+    env.DB,
+    `SELECT o.kind FROM senders s LEFT JOIN organizations o ON o.id = s.org_id
+       WHERE s.status != 'ignored' AND ((s.match_type = 'email' AND s.match_value = ?) OR (s.match_type = 'domain' AND s.match_value = ?))
+       ORDER BY s.match_type = 'email' DESC LIMIT 1`,
+    email,
+    domainOf(email)
+  );
+  return rule?.kind === "contractor";
+}
+
 // UJ-04: accounts email → senders email → senders domain → upsert unknown.
 async function resolveSender(env: Env, from: string, now: string): Promise<Attribution> {
   const account = await one<{ id: number }>(env.DB, "SELECT id FROM accounts WHERE email = ? AND active = 1", from);
@@ -84,7 +105,8 @@ async function summarise(env: Env, subject: string, body: string): Promise<strin
 // sender, summarise (unless opted out), and append the comment event (UJ-03/04/16).
 export async function processInbound(env: Env, msg: InboundEmail): Promise<void> {
   const obj = await env.RAW.get(msg.rawKey);
-  const bodyText = extractText(obj ? await obj.text() : "");
+  const raw = obj ? await obj.text() : "";
+  const bodyText = extractText(raw);
 
   const now = new Date().toISOString();
   // Producer lowercases already; normalise again defensively (emails are
@@ -107,6 +129,23 @@ export async function processInbound(env: Env, msg: InboundEmail): Promise<void>
     noAi ? 0 : 1,
     aiSummary
   );
+
+  // An agent emailing a contractor with the ticket in CC is the enquiry (D21).
+  if (actor_role === "agent") {
+    for (const to of recipients(raw)) {
+      if (!(await isContractor(env, to))) continue;
+      await run(
+        env.DB,
+        `INSERT INTO events (subject_type, subject_id, at, actor_id, actor_email, actor_role, type, to_value, source)
+         VALUES ('ticket', ?, ?, ?, ?, 'agent', 'marker', 'enquiry_sent', 'email')`,
+        msg.ticketId,
+        now,
+        actor_id,
+        actor_email
+      );
+      break;
+    }
+  }
 
   await env.RAW.delete(msg.rawKey); // processed → drop the raw copy
 }

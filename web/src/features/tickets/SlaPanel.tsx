@@ -1,57 +1,48 @@
-import {
-  Badge,
-  Card,
-  MessageBar,
-  MessageBarBody,
-  Switch,
-  Text,
-  Title3,
-  makeStyles,
-  tokens,
-} from "@fluentui/react-components";
-import { dateTime } from "../../lib/format";
-import type { Event } from "../../api/types";
-
-// Provisional: SLA-clock contract is unsettled (docs/sla-tracking.md, OPEN).
-const PROVISIONAL_SLA = true;
+import { Badge, Card, Switch, Text, Title3, makeStyles, tokens } from "@fluentui/react-components";
+import { Query } from "../../lib/Query";
+import { date } from "../../lib/format";
+import { useTicketSlas } from "./api";
 
 const useStyles = makeStyles({
   card: { padding: tokens.spacingVerticalL, gap: tokens.spacingVerticalM },
-  clock: { display: "flex", gap: tokens.spacingHorizontalS, alignItems: "center" },
+  row: { display: "flex", gap: tokens.spacingHorizontalS, alignItems: "baseline", justifyContent: "space-between" },
+  muted: { color: tokens.colorNeutralForeground3 },
 });
 
-export function SlaPanel({ events }: { events: Event[] }) {
-  const s = useStyles();
-  if (!PROVISIONAL_SLA) return null;
+const COLOR = { met: "success", breached: "danger", running: "informative" } as const;
 
-  const clocks = events.filter((e) => e.type === "clock");
+// The ticket's SLA instances, evaluated live by the server (D21).
+export function SlaPanel({ id }: { id: number }) {
+  const s = useStyles();
+  const q = useTicketSlas(id);
 
   return (
     <Card className={s.card} appearance="outline">
-      <Title3>SLA (provisional)</Title3>
-      <MessageBar intent="warning" layout="multiline">
-        <MessageBarBody>
-          Provisional — SLA clock computation and scoring exclusion are not yet
-          finalised on the backend.
-        </MessageBarBody>
-      </MessageBar>
+      <Title3>SLAs</Title3>
+      <Query q={q}>
+        {(rows) =>
+          rows.length === 0 ? (
+            <Text size={200}>No SLA applies to this ticket.</Text>
+          ) : (
+            <>
+              {rows.map((r, i) => (
+                <div key={i}>
+                  <div className={s.row}>
+                    <Text>{r.name}</Text>
+                    <Badge appearance="tint" color={COLOR[r.outcome!]}>{r.outcome}</Badge>
+                  </div>
+                  <Text size={200} className={s.muted}>
+                    {r.days} of {r.budget_days} working days · from {date(r.start_at)}
+                    {r.stop_at ? ` to ${date(r.stop_at)}` : ", still open"}
+                  </Text>
+                </div>
+              ))}
+            </>
+          )
+        }
+      </Query>
 
-      {clocks.length === 0 ? (
-        <Text size={200}>No clock events on this ticket yet.</Text>
-      ) : (
-        clocks.map((c) => (
-          <div key={c.id} className={s.clock}>
-            <Badge appearance="tint">{c.to_value ?? "clock"}</Badge>
-            <Text size={200}>{dateTime(c.at)}</Text>
-          </div>
-        ))
-      )}
-
-      <Switch
-        label="Exclude from scoring (extraordinary circumstance)"
-        disabled
-        checked={false}
-      />
+      <Switch label="Exclude from scoring (extraordinary circumstance)" disabled checked={false} />
       <Text size={100}>Control disabled until the exclusion contract lands.</Text>
     </Card>
   );
