@@ -25,7 +25,7 @@
     {
       "binding": "DB",
       "database_name": "lsq",
-      "database_id": "REPLACE_WITH_D1_ID",
+      "database_id": "3c483ac5-23db-40a4-a0ef-69e94c786281",
       "migrations_dir": "migrations"
     }
   ],

@@ -7,7 +7,7 @@
   "observability": { "enabled": true },
   // Shared D1 (same database as the server) — read-only here for the ticket check.
   "d1_databases": [
-    { "binding": "DB", "database_name": "lsq", "database_id": "REPLACE_WITH_D1_ID" }
+    { "binding": "DB", "database_name": "lsq", "database_id": "3c483ac5-23db-40a4-a0ef-69e94c786281" }
   ],
   // Raw inbound messages staged here; the ai Worker reads then deletes them.
   "r2_buckets": [
