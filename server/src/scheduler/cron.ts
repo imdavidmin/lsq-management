@@ -2,7 +2,7 @@ import type { Env } from "../env";
 import { all, run } from "../db/client";
 import { applies, instances, type SlaDef, type SlaEvent, type SlaTicket } from "../lib/sla";
 import { isWorkingDay, workingDaysBetween } from "../lib/workdays";
-import { sendMail } from "../segments/auth/mailer";
+import { sendMail } from "../../../common/mail";
 
 // Chase a still-open ticket after this many working days with no update.
 const CHASE_AFTER_WORKDAYS = 3;
@@ -50,7 +50,7 @@ export async function chasePass(env: Env, now: Date): Promise<{ chased: number }
   // lookup of the responsible account is wired.
   if (chased.length) {
     await sendMail(env, {
-      to: env.BOARD_EMAIL,
+      to: [env.BOARD_EMAIL],
       subject: `LSQ: ${chased.length} ticket(s) chased`,
       text: chased.map((t) => `#${t.id} ${t.title} (last update ${t.last_at})`).join("\n"),
     });
@@ -93,7 +93,7 @@ export async function reminderPass(env: Env, now: Date): Promise<{ due: number }
 
   if (due.length) {
     for (const a of agents) {
-      await sendMail(env, { to: a.email, subject: `LSQ: ${due.length} SLA(s) due today`, text: due.join("\n") });
+      await sendMail(env, { to: [a.email], subject: `LSQ: ${due.length} SLA(s) due today`, text: due.join("\n") });
     }
   }
   return { due: due.length };

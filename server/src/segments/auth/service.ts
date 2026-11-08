@@ -2,7 +2,7 @@ import type { Env } from "../../env";
 import { all, one, run } from "../../db/client";
 import type { Account } from "../../db/client";
 import { otpCode, randomToken, sha256hex } from "../../lib/crypto";
-import { sendMail } from "./mailer";
+import { sendMail } from "../../../../common/mail";
 
 const OTP_TTL_MIN = 10;
 const OTP_MAX_ATTEMPTS = 5;
@@ -37,7 +37,7 @@ export async function requestOtp(env: Env, email: string): Promise<void> {
     iso(now)
   );
   await sendMail(env, {
-    to: account.email,
+    to: [account.email],
     subject: "Your LSQ login code",
     text: `Your login code is ${code}. It expires in ${OTP_TTL_MIN} minutes.`,
   });

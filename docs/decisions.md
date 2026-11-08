@@ -21,6 +21,9 @@ only update that ticket.
 **Why:** removes the unknown-sender-creates-ticket / spam problem entirely. The
 address is the ticket number, so no subject parsing.
 
+**Revision (D32):** mail from a *known account* to `management@` or
+`concierge@` also opens a ticket. Unknown senders still can't.
+
 ### D4 — Sender resolution is a lookup, not an identity system
 
 Order: `accounts` email → `senders` email → `senders` domain (→ organization).
@@ -42,6 +45,10 @@ change is on the audit spine.
 and cost don't justify a model call when the creator can just pick. The only
 Workers AI use is inbound email summarisation (D9), now isolated in the `ai`
 Worker (D20).
+
+**Revision (D32):** tickets opened from `management@`/`concierge@` mail are
+classified by a model (`classified_by = 'ai'`). Web-created tickets are still
+human-chosen.
 
 ### D6 — Scoring is data-driven; binary AND proportional both supported
 
@@ -441,3 +448,61 @@ provider, or the estate directly.
   org-scoped grant (D18), not a column.
 - **Coarse access for now:** finer directory access, such as hiding resident
   contacts from a third-party cleaner, waits until a real need (docs/gdpr.md).
+
+### D32 — Mail to `management@` and `concierge@` from known people opens a ticket
+
+`management@` and `concierge@` are aliases (D26) and are still forwarded as
+before. When the sender is a known account (primary or extra address, D29), the
+`ai` Worker also triages the message:
+- **Classify:** a free Workers AI text model (JSON mode) picks one category from
+  `common/tickets.ts` and an `urgent` flag. Information requests are
+  `resident_query`. The model only returns labels. Every mail we send is a
+  fixed template, so a crafted email can't make us send its text.
+- **Ticket:** created with the sender as `created_by` and `classified_by = 'ai'`.
+  The email becomes the first comment, with its original and attachments
+  (D28). A sender with exactly one unit grant gets that unit and its building.
+  Otherwise both are left blank.
+- **Notice:** a short email goes to the destinations of the inbox the mail was
+  sent to. The ticket address is in CC, so replies thread (D3). It's sent from
+  `new@ticket.lansburysquare.co.uk` and isn't logged: the `email` Worker drops
+  ticket mail whose `From:` header is that address.
+- **Urgent:** the sender gets the auto-reply in the `config` row
+  `urgent_reply`, which points to 999, the police (101) and Tower Hamlets
+  Council. Board and admin edit it under *Directory → Email forwarding*
+  (`mail:manage`, audited as a `config` event). Its Reply-To is the ticket
+  address. It's logged word for word as a `system` comment, so it stops no
+  SLA (D21).
+- **Not triaged:**
+  - unknown senders and sender-rule matches (they have no account)
+  - mail with `no ai` in the subject (D9: no models at all)
+  - auto-submitted mail (out-of-office replies, bounces)
+
+  These are forwarded only. A person opens a ticket by hand if needed.
+- **Model failure:** the ticket is still opened, unclassified, for the agent to
+  categorise (D5).
+
+**Why:**
+- **Inbox decides who's told:** the two inboxes are separate identities. The
+  people behind each one re-forward if they're the wrong party, so there's no
+  category-to-person table to maintain.
+- **Known senders only:** D3's spam concern applies to strangers. An account
+  holder is someone we already serve, and `created_by` is never null.
+- **Forward still happens:** Workers can only `forward()` in the `email()`
+  handler, before triage has run. Forwarding first also means a model error or
+  a wrong label never loses the mail. The cost is that recipients get two
+  emails, the forwarded original and the notice.
+- **A dedicated `new@` sender, not a signed header:** MailerSend's custom
+  headers need a paid plan. Ticket local parts are numbers, so `new@` can't
+  collide with a ticket and is used for nothing else. Other mail from
+  `ops@` to a ticket is still logged. If someone spoofs `new@`, their mail is
+  dropped, which costs nothing.
+- **Reply text is data:** the wording carries legal and safety weight and will
+  change. The board edits it without a deploy, and the event log shows who
+  changed it.
+- **Free model, labels only:** a classifier needs no paid model at this volume.
+  Better models or RAG for information requests come later.
+- **Cautious auto-reply:** it reads "if this is urgent or someone is in
+  danger…" rather than telling the sender it's a police matter. A false
+  positive costs one unneeded email, while a missed emergency costs much more.
+  The prompt tells the model to treat everyday nuisance such as music or
+  footsteps as a plain `complaint`.

@@ -100,6 +100,23 @@ INSERT OR IGNORE INTO config (key, value) VALUES
 
 Report anything else via a ticket on this system.');
 
+-- Auto-reply to urgent mail at management@/concierge@ (D32). Plain text, sent
+-- and logged as is; board/admin edit it under Directory → Email forwarding.
+INSERT OR IGNORE INTO config (key, value) VALUES
+  ('urgent_reply',
+   'Thank you for your email. We have logged it and passed it to the team.
+
+If this is urgent or anyone is in danger:
+- If someone is at risk or a crime is happening now, call 999.
+- To report a crime that isn''t an emergency, call the police on 101 or report it at met.police.uk.
+- To report anti-social behaviour or noise nuisance, contact Tower Hamlets Council at towerhamlets.gov.uk.
+
+The estate team can''t take the place of the police or the council in these situations.
+
+Replying to this email adds to your ticket.
+
+This is an automated message.');
+
 -- Scoring settings: service_year_start is MM-DD (a year is labelled by the
 -- calendar year it starts in) (D21).
 INSERT OR IGNORE INTO config (key, value) VALUES

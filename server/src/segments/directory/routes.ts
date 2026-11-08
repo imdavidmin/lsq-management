@@ -265,6 +265,14 @@ directory.put("/mail-aliases/:local_part", requirePermission("mail:manage"), asy
   return c.json(await svc.putMailAlias(c.env, aliasActor(c), name.data!, forward_to));
 });
 
+// The urgent auto-reply sent by inbox triage (D32); same audience as the aliases.
+directory.get("/urgent-reply", requirePermission("mail:read"), async (c) => c.json(await svc.getUrgentReply(c.env)));
+
+directory.put("/urgent-reply", requirePermission("mail:manage"), async (c) => {
+  const { value } = await body(c, z.object({ value: z.string().trim().min(1).max(5000) }));
+  return c.json(await svc.setUrgentReply(c.env, aliasActor(c), value));
+});
+
 directory.delete("/mail-aliases/:local_part", requirePermission("mail:manage"), async (c) => {
   if (!(await svc.deleteMailAlias(c.env, aliasActor(c), c.req.param("local_part")))) notFound("no such alias");
   return c.body(null, 204);

@@ -10,7 +10,7 @@ export interface Ticket {
   unit_id: number | null;
   created_by: number | null;
   category: string | null;
-  classified_by: string; // role that last set the category (resident|agent|board|admin)
+  classified_by: string; // who last set the category (resident|agent|board|admin, or ai: D32)
   needs_contractor: number;
   is_duplicate: number;
   status: TicketStatus;

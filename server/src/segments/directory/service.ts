@@ -1,7 +1,7 @@
 import type { Env } from "../../env";
 import { all, one, run, grantsForAccount } from "../../db/client";
 import type { Account, Grant } from "../../db/client";
-import { sendMail } from "../auth/mailer";
+import { sendMail } from "../../../../common/mail";
 import { fail } from "../../lib/errors";
 import { primaryRole } from "../../../../common/roles";
 
@@ -218,7 +218,7 @@ export async function inviteAccount(
   }
 
   await sendMail(env, {
-    to: account.email,
+    to: [account.email],
     subject: "You've been invited to Lansbury Square",
     text:
       `Hi ${a.name},\n\n` +
@@ -622,6 +622,34 @@ export async function putMailAlias(env: Env, actor: Actor, localPart: string, fo
   await writeAliases(env, { ...aliases, [localPart]: forwardTo }, actor.id);
   await auditAlias(env, actor, localPart, before, forwardTo);
   return view(env, localPart, forwardTo, verified);
+}
+
+// The urgent auto-reply (D32): one plain-text config row, audited like an alias.
+export interface UrgentReply {
+  value: string;
+  updated_at: string | null;
+}
+
+export const getUrgentReply = async (env: Env): Promise<UrgentReply> =>
+  (await one<UrgentReply>(env.DB, "SELECT value, updated_at FROM config WHERE key = 'urgent_reply'")) ?? {
+    value: "",
+    updated_at: null,
+  };
+
+export async function setUrgentReply(env: Env, actor: Actor, value: string): Promise<UrgentReply> {
+  const before = await getUrgentReply(env);
+  const now = iso();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO config (key, value, updated_at, updated_by) VALUES ('urgent_reply', ?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by`
+    ).bind(value, now, actor.id),
+    env.DB.prepare(
+      `INSERT INTO events (subject_type, at, actor_id, actor_role, type, from_value, to_value, body, source)
+         VALUES ('config', ?, ?, ?, 'config', ?, ?, 'urgent_reply', 'ui')`
+    ).bind(now, actor.id, actor.role, before.value || null, value),
+  ]);
+  return { value, updated_at: now };
 }
 
 export async function deleteMailAlias(env: Env, actor: Actor, localPart: string): Promise<boolean> {

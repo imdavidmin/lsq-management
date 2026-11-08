@@ -11,8 +11,9 @@ email flow and the nightly scoring/chase engine.
   (Hono API + cron), `email` (inbound `email()` → queue), `ai` (queue consumer:
   summarise + append events). See Inbound email flow for why three, not one.
 - **D1 (SQLite)** — all persistent state (`migrations/0001_init.sql`), shared by all Workers.
-- **Workers AI** — inbound email summarisation only (in the `ai` Worker).
-  Ticket categories are chosen by the creator, not classified by AI.
+- **Workers AI** — inbound email summarisation, and classifying mail to the
+  `management@`/`concierge@` inboxes (D32), both in the `ai` Worker.
+  Web-created tickets are categorised by their creator, not by AI.
 - **Queues + R2** — inbound email is staged in R2 and processed off a queue by
   the `ai` Worker (see Inbound email flow).
 - **Email Routing** — inbound catch-all → `email` Worker for `<id>@ticket.lansburysquare.co.uk`;
@@ -129,6 +130,24 @@ server binds it read-only as `MAIL` and serves files from
 scope. Files are sandboxed (`nosniff`, `CSP: sandbox`), and only images and
 PDFs are shown inline. The timeline shows each comment's name resolved at read
 time; the stored role never changes (D29).
+
+### Triage inboxes (D32)
+
+```
+email to management@ / concierge@lansburysquare.co.uk
+  ── email Worker ─────────────────────────────────────────
+  → forward to the alias's destinations, as for any alias (D26)
+  → sender is an active account, no "no ai", not Auto-Submitted?
+       no  → done (a person opens a ticket by hand if needed)
+       yes → stash raw in R2 (triage/<inbox>/…) → enqueue {inbox, accountId, from, subject, rawKey}
+  ── ai Worker ────────────────────────────────────────────
+  → Workers AI (JSON mode) → {category, urgent}; failure → unclassified
+  → one D1 batch: ticket (created_by = sender, classified_by = 'ai', unit if
+    exactly one) + comment + attachments + classify event + advice comment if urgent
+  → notice from new@ticket… to the inbox's destinations, CC <id>@ticket…
+    (the email Worker drops ticket mail From: new@, so it's never logged)
+  → urgent → config 'urgent_reply' to the sender, Reply-To the ticket address
+```
 
 Threading is pure regex on the recipient address — never AI — so the `no ai`
 opt-out can never break SLA timing. SLA compliance is derived on read from these

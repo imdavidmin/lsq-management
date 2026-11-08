@@ -5,14 +5,22 @@
   "compatibility_date": "2024-09-23",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // Triage (D32) opens tickets and mails their notice/advice via MailerSend
+  // (secret MAILERSEND_API_KEY; without it mail is only logged).
+  "vars": {
+    "TICKET_EMAIL_DOMAIN": "ticket.lansburysquare.co.uk",
+    "MAIL_DOMAIN": "lansburysquare.co.uk",
+    "MAIL_FROM": "ops@lansburysquare.co.uk",
+    "MAIL_FROM_NAME": "Lansbury Square"
+  },
   "d1_databases": [
     { "binding": "DB", "database_name": "lsq", "database_id": "3c483ac5-23db-40a4-a0ef-69e94c786281" }
   ],
   "r2_buckets": [
     { "binding": "RAW", "bucket_name": "lsq-inbound-raw" }
   ],
-  // Workers AI for email summarisation (UJ-16). Consumer degrades to no-summary
-  // if the binding/model is unavailable — the comment event is still recorded.
+  // Workers AI for email summarisation (UJ-16) and triage classification (D32).
+  // Degrades to no summary / unclassified if unavailable; events still recorded.
   "ai": { "binding": "AI" },
   // Consumes the inbound queue; failures retry, then dead-letter after 3 tries.
   "queues": {

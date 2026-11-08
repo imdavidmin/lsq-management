@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { request } from "../../api/client";
-import type { Account, AccountDetail, AccountSummary, Building, GrantCreate, MailAlias, Organization, OrganizationCreate, Role, Sender, Unit } from "../../api/types";
+import type { Account, AccountDetail, AccountSummary, Building, GrantCreate, MailAlias, Organization, OrganizationCreate, Role, Sender, Unit, UrgentReply } from "../../api/types";
 
 // Minimised list (no email/unit) — the GDPR default. See docs/gdpr.md.
 export const useAccounts = () =>
@@ -136,6 +136,18 @@ export function useSaveMailAlias() {
     mutationFn: ({ local_part, forward_to }: { local_part: string; forward_to: string[] }) =>
       request<MailAlias>(`/mail-aliases/${encodeURIComponent(local_part)}`, { method: "PUT", body: { forward_to } }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["mail-aliases"] }),
+  });
+}
+
+// The auto-reply sent to urgent mail at management@/concierge@ (D32).
+export const useUrgentReply = () =>
+  useQuery({ queryKey: ["urgent-reply"], queryFn: () => request<UrgentReply>("/urgent-reply") });
+
+export function useSaveUrgentReply() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (value: string) => request<UrgentReply>("/urgent-reply", { method: "PUT", body: { value } }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["urgent-reply"] }),
   });
 }
 

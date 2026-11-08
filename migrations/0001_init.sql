@@ -117,7 +117,7 @@ CREATE TABLE tickets (
   created_by    INTEGER REFERENCES accounts(id),
   category      TEXT,                         -- site_defect|cleaning|reactive_fault|...
   classified_by TEXT NOT NULL DEFAULT 'resident'
-                CHECK (classified_by IN ('resident','agent','board','admin')),
+                CHECK (classified_by IN ('resident','agent','board','admin','ai')),
   needs_contractor INTEGER NOT NULL DEFAULT 0,
   is_duplicate  INTEGER NOT NULL DEFAULT 0,
   status        TEXT NOT NULL DEFAULT 'open'

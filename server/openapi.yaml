@@ -789,6 +789,37 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /urgent-reply:
+    get:
+      tags: [directory]
+      summary: The auto-reply sent to urgent mail at management@/concierge@ (D32)
+      description: Requires `mail:read`. Plain text, sent and logged on the ticket as is.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UrgentReply" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [directory]
+      summary: Replace the urgent auto-reply (board/admin, `mail:manage`)
+      description: Every change is appended to `events` (subject_type `config`, body `urgent_reply`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value]
+              properties: { value: { type: string, minLength: 1, maxLength: 5000 } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UrgentReply" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   # ------------------------------------------------------------- scoring ---
   /score:
     get:
@@ -1401,6 +1432,13 @@ components:
         name: { type: string }
         kind: { type: string, enum: [agent, contractor] }
 
+    UrgentReply:
+      type: object
+      required: [value, updated_at]
+      properties:
+        value: { type: string }
+        updated_at: { type: string, format: date-time, nullable: true }
+
     MailAlias:
       type: object
       required: [local_part, address, forward_to]
@@ -1462,7 +1500,7 @@ components:
         unit_id: { type: integer, nullable: true }
         created_by: { type: integer, nullable: true }
         category: { type: string, nullable: true }
-        classified_by: { type: string, enum: [resident, agent, board, admin] }
+        classified_by: { type: string, enum: [resident, agent, board, admin, ai] }
         needs_contractor: { type: boolean }
         is_duplicate: { type: boolean }
         status: { $ref: "#/components/schemas/TicketStatus" }

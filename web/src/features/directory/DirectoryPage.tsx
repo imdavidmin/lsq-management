@@ -65,9 +65,11 @@ import {
   useRevealUnits,
   useRoles,
   useSaveMailAlias,
+  useSaveUrgentReply,
   useSenders,
   useSetRolePermissions,
   useUnits,
+  useUrgentReply,
 } from "./api";
 import type { AccountSummary, Grant, MailAlias, Organization, Role, ScopeType, Sender } from "../../api/types";
 
@@ -81,6 +83,7 @@ const useStyles = makeStyles({
     marginBottom: tokens.spacingVerticalM,
   },
   actions: { display: "flex", justifyContent: "flex-end", marginBottom: tokens.spacingVerticalM },
+  urgentReply: { display: "grid", gap: tokens.spacingVerticalS, maxWidth: "720px", marginTop: tokens.spacingVerticalXXL },
   intro: {
     display: "flex",
     justifyContent: "space-between",
@@ -649,7 +652,53 @@ function MailPanel() {
         {canManage && <NewAliasDialog taken={(q.data ?? []).map((a) => a.local_part)} />}
       </div>
       <Query q={q}>{(aliases) => <DataGrid rows={aliases} cols={cols} rowId={(r) => r.local_part} />}</Query>
+      <UrgentReplyEditor canManage={canManage} />
     </div>
+  );
+}
+
+// The plain-text auto-reply sent to senders whose mail to management@ or
+// concierge@ looks urgent (D32). Sent and logged on the ticket as written.
+function UrgentReplyEditor({ canManage }: { canManage: boolean }) {
+  const s = useStyles();
+  const q = useUrgentReply();
+  const save = useSaveUrgentReply();
+  const [draft, setDraft] = useState<string | null>(null); // null = unedited
+  return (
+    <Query q={q}>
+      {(reply) => (
+        <div className={s.urgentReply}>
+          <Title3>Urgent auto-reply</Title3>
+          <Text>
+            Sent when an email to management@ or concierge@ from a known resident looks urgent: danger, crime, or
+            serious anti-social behaviour. Replies to it are added to the ticket.
+          </Text>
+          <Field
+            validationState={save.error ? "error" : "none"}
+            validationMessage={save.error?.message}
+            hint={reply.updated_at ? `Updated ${dateTime(reply.updated_at)}` : undefined}
+          >
+            <Textarea
+              value={draft ?? reply.value}
+              onChange={(_, d) => setDraft(d.value)}
+              readOnly={!canManage}
+              rows={12}
+            />
+          </Field>
+          {canManage && (
+            <div>
+              <Button
+                appearance="primary"
+                disabled={save.isPending || draft == null || !draft.trim() || draft === reply.value}
+                onClick={() => save.mutate(draft!, { onSuccess: () => setDraft(null) })}
+              >
+                Save
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </Query>
   );
 }
 

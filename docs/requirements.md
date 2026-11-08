@@ -30,7 +30,9 @@ Authoritative spec. The scoring rubric here is the source of truth for the
 
 - The ticket **creator picks the category** on the create form (optional).
 - If left blank → the ticket is **unclassified** until an agent categorises it.
-  (AI classification was dropped for now — categories are human-chosen.)
+  (AI classification was dropped for now — categories are human-chosen.
+  Exception: tickets opened from `management@`/`concierge@` mail are
+  classified by a model, D32.)
 - Agent may reassign category later; change is **logged**, board disputes
   **later** (not inline). Agent has default authority; board has systems access
   as the ultimate backstop.
@@ -156,7 +158,9 @@ ending in a completed state.
 
 > AI-assisted classification was dropped for the trial (categories are
 > human-chosen); revisit once the taxonomy settles. The only Workers AI use is
-> inbound email summarisation (UJ-16), in the `ai` Worker.
+> inbound email summarisation (UJ-16), in the `ai` Worker. Since D32, tickets
+> opened from `management@`/`concierge@` mail are model-classified
+> (`classified_by = ai`).
 
 **UJ-06 — Reassign a ticket category (agent)**
 

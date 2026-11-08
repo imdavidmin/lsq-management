@@ -1616,6 +1616,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/urgent-reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The auto-reply sent to urgent mail at management@/concierge@ (D32)
+         * @description Requires `mail:read`. Plain text, sent and logged on the ticket as is.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["UrgentReply"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        /**
+         * Replace the urgent auto-reply (board/admin, `mail:manage`)
+         * @description Every change is appended to `events` (subject_type `config`, body `urgent_reply`).
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        value: string;
+                    };
+                };
+            };
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["UrgentReply"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/score": {
         parameters: {
             query?: never;
@@ -2682,6 +2751,11 @@ export interface components {
             /** @enum {string} */
             kind: "agent" | "contractor";
         };
+        UrgentReply: {
+            value: string;
+            /** Format: date-time */
+            updated_at: string | null;
+        };
         MailAlias: {
             /** @example board */
             local_part: string;
@@ -2734,7 +2808,7 @@ export interface components {
             created_by?: number | null;
             category?: string | null;
             /** @enum {string} */
-            classified_by?: "resident" | "agent" | "board" | "admin";
+            classified_by?: "resident" | "agent" | "board" | "admin" | "ai";
             needs_contractor?: boolean;
             is_duplicate?: boolean;
             status?: components["schemas"]["TicketStatus"];

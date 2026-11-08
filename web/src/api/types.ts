@@ -12,6 +12,7 @@ export type Organization = S["Organization"];
 export type OrganizationCreate = S["OrganizationCreate"];
 export type Sender = S["Sender"];
 export type MailAlias = S["MailAlias"];
+export type UrgentReply = S["UrgentReply"];
 export type Role = S["Role"];
 export type Grant = S["Grant"];
 export type GrantCreate = S["GrantCreate"];

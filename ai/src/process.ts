@@ -1,19 +1,22 @@
-import PostalMime, { type Address } from "postal-mime";
+import PostalMime, { type Address, type Email } from "postal-mime";
 import type { InboundEmail } from "../../common/queue";
 import { primaryRole } from "../../common/roles";
 import { defaultRole } from "../../common/senders";
 import { ROLE_GROUPS } from "../../common/sla";
+import type { MailEnv } from "../../common/mail";
 import { all, one, run } from "./db";
 
-export interface Env {
+export interface Env extends MailEnv {
   DB: D1Database;
   RAW: R2Bucket;
-  AI?: Ai; // absent in tests/dev → summary skipped, event still recorded
+  AI?: Ai; // absent in tests/dev → summary/classification skipped, event still recorded
+  TICKET_EMAIL_DOMAIN: string;
+  MAIL_DOMAIN: string;
 }
 
 const MODEL = "@cf/facebook/bart-large-cnn"; // summarisation
 
-interface Attribution {
+export interface Attribution {
   actor_id: number | null;
   actor_email: string | null;
   actor_role: string | null;
@@ -34,7 +37,7 @@ function htmlToText(html: string): string {
 }
 
 // The readable message: text part, else HTML converted; capped (D28).
-const bodyOf = (email: { text?: string; html?: string }) =>
+export const bodyOf = (email: { text?: string; html?: string }) =>
   (email.text ?? (email.html ? htmlToText(email.html) : ""))
     .replace(/\r\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
@@ -68,7 +71,7 @@ async function isContractor(env: Env, email: string): Promise<boolean> {
 
 // UJ-04: account email (primary or extra, D29) → senders email → senders domain
 // → upsert unknown. Without an organization the role defaults by domain (D29).
-async function resolveSender(env: Env, from: string, now: string): Promise<Attribution> {
+export async function resolveSender(env: Env, from: string, now: string): Promise<Attribution> {
   const account = await one<{ id: number }>(
     env.DB,
     `SELECT a.id FROM accounts a LEFT JOIN account_emails ae ON ae.account_id = a.id
@@ -113,7 +116,7 @@ async function resolveSender(env: Env, from: string, now: string): Promise<Attri
   return { actor_id: null, actor_email: from, actor_role: defaultRole(from) };
 }
 
-async function summarise(env: Env, subject: string, body: string): Promise<string | null> {
+export async function summarise(env: Env, subject: string, body: string): Promise<string | null> {
   if (!env.AI) return null;
   try {
     const res = (await env.AI.run(MODEL, { input_text: `${subject}\n\n${body}`, max_length: 120 })) as {
@@ -123,6 +126,43 @@ async function summarise(env: Env, subject: string, body: string): Promise<strin
   } catch {
     return null;
   }
+}
+
+export interface StoredFile {
+  r2Key: string;
+  filename: string;
+  type: string;
+  size: number;
+}
+
+// Write each attachment to R2 under `dir`, derived from the raw key so a retry overwrites them.
+export async function storeFiles(env: Env, email: Email, dir: string): Promise<StoredFile[]> {
+  return Promise.all(
+    email.attachments.map(async (att, i) => {
+      const r2Key = `${dir}/${i}-${safeName(att.filename)}`;
+      const content = typeof att.content === "string" ? new TextEncoder().encode(att.content) : att.content;
+      await env.RAW.put(r2Key, content, { httpMetadata: { contentType: att.mimeType } });
+      return { r2Key, filename: att.filename ?? safeName(null), type: att.mimeType, size: content.byteLength };
+    })
+  );
+}
+
+// Attachment rows for the comment just inserted: the original first (its key
+// marks the email done), then each file, linked through the original (D28).
+export function attachmentInserts(env: Env, rawKey: string, rawSize: number, files: StoredFile[]): D1PreparedStatement[] {
+  const eventOf = `(SELECT event_id FROM attachments WHERE r2_key = ?)`;
+  return [
+    env.DB.prepare(
+      `INSERT INTO attachments (event_id, kind, filename, content_type, size, r2_key)
+       VALUES (last_insert_rowid(), 'original', 'original.eml', 'message/rfc822', ?, ?)`
+    ).bind(rawSize, rawKey),
+    ...files.map((f) =>
+      env.DB.prepare(
+        `INSERT INTO attachments (event_id, kind, filename, content_type, size, r2_key)
+         VALUES (${eventOf}, 'file', ?, ?, ?, ?)`
+      ).bind(rawKey, f.filename, f.type, f.size, f.r2Key)
+    ),
+  ];
 }
 
 // Consume one queued inbound email: parse the raw message from R2, resolve the
@@ -144,16 +184,8 @@ export async function processInbound(env: Env, msg: InboundEmail): Promise<void>
   const noAi = /no ai/i.test(msg.subject); // UJ-16 opt-out
   const aiSummary = noAi ? null : await summarise(env, msg.subject, bodyText);
 
-  // Files first, under keys derived from the raw key so a retry overwrites them.
   const rawId = msg.rawKey.slice(msg.rawKey.lastIndexOf("/") + 1);
-  const files = await Promise.all(
-    email.attachments.map(async (att, i) => {
-      const r2Key = `attachments/${msg.ticketId}/${rawId}/${i}-${safeName(att.filename)}`;
-      const content = typeof att.content === "string" ? new TextEncoder().encode(att.content) : att.content;
-      await env.RAW.put(r2Key, content, { httpMetadata: { contentType: att.mimeType } });
-      return { r2Key, filename: att.filename ?? safeName(null), type: att.mimeType, size: content.byteLength };
-    })
-  );
+  const files = await storeFiles(env, email, `attachments/${msg.ticketId}/${rawId}`);
 
   // Staff emailing a contractor with the ticket in CC is the enquiry (D21, D31).
   let enquiry = false;
@@ -166,23 +198,13 @@ export async function processInbound(env: Env, msg: InboundEmail): Promise<void>
     }
   }
 
-  const eventOf = `(SELECT event_id FROM attachments WHERE r2_key = ?)`;
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO events
          (subject_type, subject_id, at, actor_id, actor_email, actor_role, type, body, source, ai_processed, ai_summary)
        VALUES ('ticket', ?, ?, ?, ?, ?, 'comment', ?, 'email', ?, ?)`
     ).bind(msg.ticketId, now, actor_id, actor_email, actor_role, bodyText, noAi ? 0 : 1, aiSummary),
-    env.DB.prepare(
-      `INSERT INTO attachments (event_id, kind, filename, content_type, size, r2_key)
-       VALUES (last_insert_rowid(), 'original', 'original.eml', 'message/rfc822', ?, ?)`
-    ).bind(raw.byteLength, msg.rawKey),
-    ...files.map((f) =>
-      env.DB.prepare(
-        `INSERT INTO attachments (event_id, kind, filename, content_type, size, r2_key)
-         VALUES (${eventOf}, 'file', ?, ?, ?, ?)`
-      ).bind(msg.rawKey, f.filename, f.type, f.size, f.r2Key)
-    ),
+    ...attachmentInserts(env, msg.rawKey, raw.byteLength, files),
     ...(enquiry
       ? [
           env.DB.prepare(

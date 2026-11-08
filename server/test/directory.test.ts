@@ -402,6 +402,23 @@ describe("mail aliases (D26)", () => {
     expect((await withCf("/api/mail-aliases/board", board.cookie, { method: "DELETE" })).status).toBe(404);
   });
 
+  it("serves the seeded urgent auto-reply; only board/admin edit it, audited (D32)", async () => {
+    const agent = await login("agent-urgent@lsq.test", "agent", "estate", null);
+    const board = await login("board-urgent@lsq.test", "board", "estate", null);
+    const seeded = await (await req("/api/urgent-reply", agent.cookie)).json<any>();
+    expect(seeded.value).toMatch(/999/);
+    expect((await put("/api/urgent-reply", agent.cookie, { value: "x" })).status).toBe(403);
+    expect((await put("/api/urgent-reply", board.cookie, { value: "  " })).status).toBe(400);
+
+    const res = await put("/api/urgent-reply", board.cookie, { value: "Call 999 if in danger.\n" });
+    expect(res.status).toBe(200);
+    expect((await res.json<any>()).value).toBe("Call 999 if in danger.");
+    const ev = await env.DB.prepare(
+      "SELECT actor_id, body, from_value, to_value FROM events WHERE subject_type = 'config'"
+    ).first<any>();
+    expect(ev).toEqual({ actor_id: board.id, body: "urgent_reply", from_value: seeded.value, to_value: "Call 999 if in danger." });
+  });
+
   it("rejects ticket-shaped names and mail loops", async () => {
     const board = await login("board-mail2@lsq.test", "board", "estate", null);
     expect((await put("/api/mail-aliases/ops", board.cookie, { forward_to: ["a@gmail.com"] })).status).toBe(200);

@@ -6,12 +6,14 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   // <ticketId>@TICKET_EMAIL_DOMAIN threads (D25); <alias>@MAIL_DOMAIN forwards
-  // to the alias's destinations (D26); anything else is rejected.
+  // to the alias's destinations (D26); anything else is rejected. Ticket mail
+  // from new@TICKET_EMAIL_DOMAIN is our own triage notice and is dropped (D32).
   "vars": {
     "TICKET_EMAIL_DOMAIN": "ticket.lansburysquare.co.uk",
     "MAIL_DOMAIN": "lansburysquare.co.uk"
   },
-  // Shared D1 (same database as the server) — read-only here for the ticket check.
+  // Shared D1 (same database as the server) — read-only here: ticket check,
+  // aliases, and the sender account for triage (D32).
   "d1_databases": [
     { "binding": "DB", "database_name": "lsq", "database_id": "3c483ac5-23db-40a4-a0ef-69e94c786281" }
   ],

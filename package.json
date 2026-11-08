@@ -11,7 +11,7 @@
     "deploy:server": "wrangler deploy",
     "deploy:email": "wrangler deploy -c email/wrangler.jsonc",
     "deploy:ai": "wrangler deploy -c ai/wrangler.jsonc",
-    "seed:dev": "wrangler d1 execute DB --local --file=server/dev-seed.sql",
+    "seed:dev": "wrangler d1 execute DB --local --file=server/dev-seed.sql && wrangler r2 object put lsq-inbound-raw/inbound/204/demo-2083 --local --file=server/dev-seed-files/original.eml --content-type=message/rfc822 && wrangler r2 object put lsq-inbound-raw/attachments/204/demo-2083/0-IMG_4127.jpg --local --file=server/dev-seed-files/IMG_4127.jpg --content-type=image/jpeg",
     "migrate:local": "wrangler d1 migrations apply DB --local",
     "migrate:remote": "wrangler d1 migrations apply DB --remote",
     "test": "vitest run",

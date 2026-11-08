@@ -815,3 +815,31 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (2062, 'ticket', 203, '2026-10-29T10:15:00Z', 24, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui', 0, NULL),
   (2063, 'ticket', 203, '2026-10-29T11:00:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'WindowShine, please re-clean the 2nd floor landing windows at Lamington Heights.', 'email', 1, 'Agent asks WindowShine to re-clean the 2nd floor landing windows.'),
   (2064, 'ticket', 203, '2026-11-06T13:20:00Z', NULL, 'ops@windowshine.co.uk', 'contractor', 'comment', NULL, NULL, 'Apologies. We can re-clean on our next visit, Thu 12 Nov, unless you need it sooner?', 'email', 1, 'WindowShine offers a re-clean on Thu 12 Nov and asks if sooner is needed.');
+
+-- Resident email follow-up with a photo (Nov 2026) ----------------------------
+--   204 Hugo raises a damp patch in the UI; the agent replies by email asking for
+--       a photo (stops 'Acknowledged'); Hugo replies to the thread with one. The
+--       reply is attributed to his account, kept as original.eml + the image (D28).
+--       Its R2 objects live in server/dev-seed-files/; `npm run seed:dev` uploads them.
+INSERT OR IGNORE INTO tickets (id, title, building_id, unit_id, created_by, category, classified_by, needs_contractor, status, created_at, resolved_at) VALUES
+  (204, 'Damp patch spreading on bedroom ceiling', 5, 9, 23, 'reactive_fault', 'resident', 0, 'open', '2026-11-02T19:40:00Z', NULL);
+
+INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_email, actor_role, type, from_value, to_value, body, source, ai_processed, ai_summary) VALUES
+  (2080, 'ticket', 204, '2026-11-02T19:40:00Z', 23, NULL, 'resident', 'comment', NULL, NULL, 'There''s a damp patch on the bedroom ceiling by the window. It wasn''t there last week.', 'ui', 0, NULL),
+  (2081, 'ticket', 204, '2026-11-02T19:40:00Z', 23, NULL, 'resident', 'classify', NULL, 'reactive_fault', NULL, 'ui', 0, NULL),
+  (2082, 'ticket', 204, '2026-11-04T10:15:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'Hi Hugo, thanks for reporting this. Could you send a photo of the patch and let us know if it has grown since you first noticed it? We''ll check whether it''s coming from the flat above.', 'email', 1, 'Agent asks for a photo and whether the patch has grown; will check the flat above.'),
+  (2083, 'ticket', 204, '2026-11-05T07:52:00Z', 23, NULL, 'resident', 'comment', NULL, NULL, 'Hi Priya,
+
+Photo attached. It''s about twice the size it was on Monday, and the paint near the window is starting to bubble. I''m in all day Thursday and Friday if someone needs to look at it.
+
+Thanks,
+Hugo
+
+On Wed, 4 Nov 2026 at 10:15, Priya Shah <priya@example.com> wrote:
+> Hi Hugo, thanks for reporting this. Could you send a photo of the patch
+> and let us know if it has grown since you first noticed it? We''ll check
+> whether it''s coming from the flat above.', 'email', 1, 'Resident sends a photo: the patch has doubled since Monday and paint is bubbling; in Thu–Fri for access.');
+
+INSERT OR IGNORE INTO attachments (id, event_id, kind, filename, content_type, size, r2_key) VALUES
+  (2083, 2083, 'original', 'original.eml', 'message/rfc822', 116513, 'inbound/204/demo-2083'),
+  (2084, 2083, 'file',     'IMG_4127.jpg', 'image/jpeg',     84347,  'attachments/204/demo-2083/0-IMG_4127.jpg');
