@@ -7,7 +7,8 @@ INSERT OR IGNORE INTO roles (key, name) VALUES
   ('board',      'Board Member'),
   ('agent',      'Managing Agent'),
   ('admin',      'System Admin'),
-  ('contractor', 'Contractor');
+  ('contractor', 'Contractor'),
+  ('site_staff', 'Site Staff');
 
 -- Permissions per role. '*' = all; 'ns:*' = all in a namespace. Checked in rbac.ts.
 INSERT OR IGNORE INTO role_permissions (role_key, permission) VALUES
@@ -29,6 +30,13 @@ INSERT OR IGNORE INTO role_permissions (role_key, permission) VALUES
   ('agent', 'config:read'),
   ('agent', 'sla:read'),             -- the SLAs they're measured against
   ('agent', 'mail:read'),            -- see aliases, not change them: board@ is the board's (D26)
+
+  -- site staff (D31): the whole site's tickets + directory, no scoring/SLA/survey data.
+  ('site_staff', 'ticket:*'),
+  ('site_staff', 'account:read'),
+  ('site_staff', 'dir:read'),
+  ('site_staff', 'org:read'),
+  ('site_staff', 'config:read'),
 
   ('resident', 'ticket:read'),
   ('resident', 'ticket:create'),

@@ -335,7 +335,7 @@ paths:
         new) adds a `resident` grant on that unit. Any role other than
         `resident` is granted on `org_id`'s organization if given, else
         estate-wide — so a board member sends role `board` plus their unit, and
-        staff (e.g. concierge as `agent`) send no building or unit.
+        staff (e.g. concierge as `site_staff`) send no building or unit.
       requestBody:
         required: true
         content:

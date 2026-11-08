@@ -570,7 +570,7 @@ export interface paths {
         put?: never;
         /**
          * Create / invite an account
-         * @description Creates the account and its grants, then emails an invitation. Activation is the passwordless OTP flow (docs/authentication.md) — the email points the recipient at sign-in, no separate token. A `unit` (free text, matched case-insensitively within `building_id`, created if new) adds a `resident` grant on that unit. Any role other than `resident` is granted on `org_id`'s organization if given, else estate-wide — so a board member sends role `board` plus their unit, and staff (e.g. concierge as `agent`) send no building or unit.
+         * @description Creates the account and its grants, then emails an invitation. Activation is the passwordless OTP flow (docs/authentication.md) — the email points the recipient at sign-in, no separate token. A `unit` (free text, matched case-insensitively within `building_id`, created if new) adds a `resident` grant on that unit. Any role other than `resident` is granted on `org_id`'s organization if given, else estate-wide — so a board member sends role `board` plus their unit, and staff (e.g. concierge as `site_staff`) send no building or unit.
          */
         post: {
             parameters: {

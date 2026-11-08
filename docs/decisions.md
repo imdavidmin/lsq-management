@@ -415,3 +415,29 @@ anonymous tombstone rather than removed:
   (docs/gdpr.md).
 - **Manual, not on a retention timer:** move-outs are infrequent, and the
   board knows when they happen.
+
+### D31 — Site staff: whole-site ticket access, no performance or survey data
+
+`site_staff` is a role for people who work on the estate day to day: concierge,
+caretaker, cleaners. They may be employed by the managing agent, a third-party
+provider, or the estate directly.
+- **Grant:** estate-scoped, like the agent's.
+- **Permissions:** `ticket:*`, `account:read`, `dir:read`, `org:read`,
+  `config:read`. They get no `score:`, `report:`, `metric:`, `sla:`,
+  `survey:`, `sender:` or `mail:` permissions.
+- **SLAs count them as staff:** `ROLE_GROUPS.staff` includes `site_staff`. A
+  site-staff reply stops a staff SLA. A site-staff ticket counts as raised by
+  staff for site inspection, and their email to a contractor is an enquiry.
+- **Precedence:** between `agent` and `contractor` (`common/roles.ts`).
+- **Employer isn't recorded.** The grant carries no organization.
+
+**Why:**
+- **No scoring or survey access:** performance data, and the resident surveys
+  that feed it, are a matter between the board and the agent. They're above
+  site staff's job role.
+- **Replies count:** the resident gets a response whoever on site sends it. That
+  is what the SLAs measure.
+- **No employer:** no rule depends on it yet (D8). If one does, add a second,
+  org-scoped grant (D18), not a column.
+- **Coarse access for now:** finer directory access, such as hiding resident
+  contacts from a third-party cleaner, waits until a real need (docs/gdpr.md).

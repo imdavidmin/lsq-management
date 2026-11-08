@@ -1,6 +1,6 @@
 import type { Env } from "../../env";
 import { all, one, run } from "../../db/client";
-import { SETTINGS, type SettingKey } from "../../../../common/sla";
+import { ROLE_GROUPS, SETTINGS, type SettingKey } from "../../../../common/sla";
 import { applies, instances, ticketPasses, type Instance, type SlaEvent, type SlaTicket } from "../../lib/sla";
 
 export interface MetricRow {
@@ -218,7 +218,7 @@ export interface MetricScore {
 
 // Site-inspection defects in scope, and whether staff raised one (its first event is the creator's).
 const inspectionDefects = (ts: ScoredTicket[]) => ts.filter((t) => t.category === "site_defect" && !t.is_duplicate);
-const raisedByStaff = (t: ScoredTicket) => ["agent", "admin"].includes(t.events[0]?.actor_role ?? "");
+const raisedByStaff = (t: ScoredTicket) => (ROLE_GROUPS.staff as readonly string[]).includes(t.events[0]?.actor_role ?? "");
 
 // A ticket's instances of every applicable SLA, labelled for display.
 const namedInstances = (slas: SlaRow[], t: SlaTicket, now: string) =>

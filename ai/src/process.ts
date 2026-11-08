@@ -2,6 +2,7 @@ import PostalMime, { type Address } from "postal-mime";
 import type { InboundEmail } from "../../common/queue";
 import { primaryRole } from "../../common/roles";
 import { defaultRole } from "../../common/senders";
+import { ROLE_GROUPS } from "../../common/sla";
 import { all, one, run } from "./db";
 
 export interface Env {
@@ -154,9 +155,9 @@ export async function processInbound(env: Env, msg: InboundEmail): Promise<void>
     })
   );
 
-  // An agent emailing a contractor with the ticket in CC is the enquiry (D21).
+  // Staff emailing a contractor with the ticket in CC is the enquiry (D21, D31).
   let enquiry = false;
-  if (actor_role === "agent") {
+  if ((ROLE_GROUPS.staff as readonly string[]).includes(actor_role ?? "")) {
     for (const to of recipients([...(email.to ?? []), ...(email.cc ?? [])])) {
       if (await isContractor(env, to)) {
         enquiry = true;
@@ -186,8 +187,8 @@ export async function processInbound(env: Env, msg: InboundEmail): Promise<void>
       ? [
           env.DB.prepare(
             `INSERT INTO events (subject_type, subject_id, at, actor_id, actor_email, actor_role, type, to_value, source)
-             VALUES ('ticket', ?, ?, ?, ?, 'agent', 'marker', 'enquiry_sent', 'email')`
-          ).bind(msg.ticketId, now, actor_id, actor_email),
+             VALUES ('ticket', ?, ?, ?, ?, ?, 'marker', 'enquiry_sent', 'email')`
+          ).bind(msg.ticketId, now, actor_id, actor_email, actor_role),
         ]
       : []),
   ]);

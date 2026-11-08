@@ -4,7 +4,7 @@ import { STATUSES } from "./tickets";
 
 // actor_role values each `event_by` group matches.
 export const ROLE_GROUPS = {
-  staff: ["agent", "admin"],
+  staff: ["agent", "admin", "site_staff"],
   contractor: ["contractor"],
   resident: ["resident"],
 } as const;

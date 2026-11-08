@@ -22,7 +22,7 @@ derived from `events`, not stored as bespoke columns.
 
 ## What we already have to build on
 
-- `events.actor_role` (resident|agent|admin|contractor|system) — tells us *who*
+- `events.actor_role` (resident|agent|admin|site_staff|contractor|system) — tells us *who*
   moved a ticket, which is the basis for "agent replied", "contractor replied".
 - `events.type = 'clock'` — originally reserved for SLA clock stamps; unused
   under D21.

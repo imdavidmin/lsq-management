@@ -88,6 +88,8 @@ the association/membership lookup and the access basis (D18).
   scope, plus survey access there.
 - **Agent / admin** — an estate-scoped grant (see everything), plus a "my own
   issues" resident-style view via their own resident grant if they have one.
+- **Site staff** — an estate-scoped grant: every ticket (full ticket powers)
+  and the directory, but no scoring, SLA, report or survey data (D31).
 - **Board member** — holds both a resident grant _and_ a board grant; board
   powers (dispute, link senders, full audit) come from the board grant.
 - **Granular sharing** — a ticket-scoped grant gives one account access to one

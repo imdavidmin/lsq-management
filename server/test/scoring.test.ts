@@ -178,6 +178,8 @@ describe("SLA evaluator", () => {
     expect(outcomes(ack, ticket("2026-11-02T09:00Z", [ev("2026-11-03T09:00Z", "resident"), ev("2026-11-05T10:00Z", "agent")]), now)).toEqual([["breached", 3]]);
     expect(outcomes(ack, ticket("2026-11-02T09:00Z", []), now)).toEqual([["breached", 20]]);
     expect(outcomes(ack, ticket("2026-11-02T09:00Z", []), "2026-11-03T12:00:00Z")).toEqual([["running", 1]]);
+    // Site staff count as staff (D31).
+    expect(outcomes(ack, ticket("2026-11-02T09:00Z", [ev("2026-11-03T10:00Z", "site_staff")]), now)).toEqual([["met", 1]]);
   });
 
   it("a staff-created ticket is acknowledged at 0 wd; budgets skip weekends and holidays", () => {
@@ -265,6 +267,11 @@ describe("scoring — /score", () => {
     const resident = await login("score-res@lsq.test", "resident", "estate", null);
     expect((await req("/api/tickets/7002/slas", resident.cookie)).status).toBe(403);
     expect((await req("/api/score", resident.cookie)).status).toBe(403);
+    // Site staff: whole-site tickets, but no scoring, SLA or survey data (D31).
+    const staff = await login("score-staff@lsq.test", "site_staff", "estate", null);
+    expect((await req("/api/tickets/7002", staff.cookie)).status).toBe(200);
+    for (const path of ["/api/score", "/api/slas", "/api/surveys", "/api/tickets/7002/slas", "/api/score/metrics/res.ticket_acknowledgement"])
+      expect((await req(path, staff.cookie)).status).toBe(403);
 
     // The metric detail lists each ticket with its verdict and instances.
     const detail = (await (await req("/api/score/metrics/res.ticket_acknowledgement", agent.cookie)).json()) as any;

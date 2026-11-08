@@ -37,7 +37,7 @@ web (same pattern as `common/tickets.ts`):
 | --- | --- | --- |
 | `ticket_created` | — | (start only) the ticket's creation |
 | `status` | a `STATUSES` value | `type='status'` and `to_value` = value |
-| `event_by` | `staff` \| `contractor` \| `resident` | any event whose `actor_role` is in the group (`staff` = agent, admin) |
+| `event_by` | `staff` \| `contractor` \| `resident` | any event whose `actor_role` is in the group (`staff` = agent, admin, site_staff — D31) |
 | `marker` | `enquiry_sent` \| `attended` | `type='marker'` and `to_value` = value |
 
 Evaluation, in a pure function in `server/src/lib/sla.ts` that reuses

@@ -26,7 +26,7 @@ CREATE TABLE accounts (
 
 -- Roles as data.
 CREATE TABLE roles (
-  key   TEXT PRIMARY KEY,            -- 'resident','board','agent','admin','contractor'
+  key   TEXT PRIMARY KEY,            -- 'resident','board','agent','admin','contractor','site_staff'
   name  TEXT NOT NULL
 );
 
@@ -141,7 +141,7 @@ CREATE TABLE events (
   at           TEXT NOT NULL,
   actor_id     INTEGER REFERENCES accounts(id), -- null if unknown email
   actor_email  TEXT,                            -- raw From when actor unknown
-  actor_role   TEXT,                            -- resident|agent|admin|contractor|system
+  actor_role   TEXT,                            -- resident|agent|admin|site_staff|contractor|system
   type         TEXT NOT NULL,                   -- comment|classify|status|marker|config|attest|chase|snapshot
   from_value   TEXT,
   to_value     TEXT,
