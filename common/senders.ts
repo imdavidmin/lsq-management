@@ -25,7 +25,8 @@ const PERSONAL_DOMAINS = new Set([
   "gmx.com",
 ]);
 
+export const isPersonalDomain = (domain: string) => PERSONAL_DOMAINS.has(domain.toLowerCase());
+
 export function defaultRole(email: string): "resident" | "contractor" {
-  const domain = email.slice(email.lastIndexOf("@") + 1).toLowerCase();
-  return PERSONAL_DOMAINS.has(domain) ? "resident" : "contractor";
+  return isPersonalDomain(email.slice(email.lastIndexOf("@") + 1)) ? "resident" : "contractor";
 }

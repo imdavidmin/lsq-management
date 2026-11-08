@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactElement, type ReactNode } from "react";
 import {
   Badge,
   Button,
@@ -21,6 +21,7 @@ import {
   OverlayDrawer,
   Spinner,
   Text,
+  Textarea,
   Table,
   TableBody,
   TableCell,
@@ -34,7 +35,7 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import { Delete20Regular, Dismiss20Regular, Eye20Regular, PeopleTeam20Regular, PersonAdd20Regular } from "@fluentui/react-icons";
+import { Add20Regular, Delete20Regular, Dismiss20Regular, Eye20Regular, PeopleTeam20Regular, PersonAdd20Regular } from "@fluentui/react-icons";
 import type { ColDef } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { agTheme } from "../../lib/grid";
@@ -68,7 +69,7 @@ import {
   useSetRolePermissions,
   useUnits,
 } from "./api";
-import type { Grant, MailAlias, Role, ScopeType } from "../../api/types";
+import type { AccountSummary, Grant, MailAlias, Organization, Role, ScopeType, Sender } from "../../api/types";
 
 const useStyles = makeStyles({
   tabs: { marginBottom: tokens.spacingVerticalL },
@@ -79,6 +80,15 @@ const useStyles = makeStyles({
     alignItems: "center",
     marginBottom: tokens.spacingVerticalM,
   },
+  actions: { display: "flex", justifyContent: "flex-end", marginBottom: tokens.spacingVerticalM },
+  intro: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: tokens.spacingHorizontalL,
+    marginBottom: tokens.spacingVerticalM,
+  },
+  badges: { display: "flex", gap: tokens.spacingHorizontalXS, flexWrap: "wrap", padding: `${tokens.spacingVerticalXS} 0` },
   dialogForm: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalM },
   error: { color: tokens.colorPaletteRedForeground1 },
   deleteUser: { marginTop: tokens.spacingVerticalXXL, color: tokens.colorPaletteRedForeground1 },
@@ -99,6 +109,71 @@ const useStyles = makeStyles({
 });
 
 type AccountRow = { id: number; name: string; active: boolean; roles: string; buildings: string };
+
+// Small directory tables: auto-height grid (the accounts grid is fixed-height).
+function DataGrid<T>({ rows, cols, rowId }: { rows: T[]; cols: ColDef<T>[]; rowId: (row: T) => string }) {
+  const { dark } = useThemeMode();
+  return (
+    <AgGridReact<T>
+      theme={agTheme(dark)}
+      domLayout="autoHeight"
+      rowData={rows}
+      columnDefs={cols}
+      getRowId={(p) => rowId(p.data)}
+      defaultColDef={{ sortable: true, filter: true, resizable: true }}
+    />
+  );
+}
+
+// Trigger button + dialog with Cancel/submit; onSubmit gets a close callback
+// to call on success so the dialog stays open (showing the error) on failure.
+function FormDialog({
+  trigger,
+  title,
+  submitLabel,
+  disabled,
+  pending,
+  error,
+  onOpenChange,
+  onSubmit,
+  children,
+}: {
+  trigger: ReactElement;
+  title: string;
+  submitLabel: string;
+  disabled?: boolean;
+  pending: boolean;
+  error: Error | null;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (close: () => void) => void;
+  children: ReactNode;
+}) {
+  const s = useStyles();
+  const [open, setOpen] = useState(false);
+  const change = (o: boolean) => { setOpen(o); onOpenChange(o); };
+  return (
+    <Dialog open={open} onOpenChange={(_, d) => change(d.open)}>
+      <DialogTrigger disableButtonEnhancement>{trigger}</DialogTrigger>
+      <DialogSurface>
+        <DialogBody>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogContent className={s.dialogForm}>
+            {children}
+            {error && <Text className={s.error}>{error.message}</Text>}
+          </DialogContent>
+          <DialogActions>
+            <DialogTrigger disableButtonEnhancement>
+              <Button appearance="secondary">Cancel</Button>
+            </DialogTrigger>
+            <Button appearance="primary" disabled={disabled || pending} onClick={() => onSubmit(() => change(false))}>
+              {pending ? "Saving…" : submitLabel}
+            </Button>
+          </DialogActions>
+        </DialogBody>
+      </DialogSurface>
+    </Dialog>
+  );
+}
 
 // Masked-until-click cell. The reveal button fires an audited read
 // (GET /accounts/{id}?reveal=email|units) and shows the value once.
@@ -317,8 +392,7 @@ function AccountsPanel() {
 
   return (
     <div>
-      <div className={s.header}>
-        <Title3>Accounts</Title3>
+      <div className={s.actions}>
         <Can perm="account:manage">
           <NewUserDialog />
         </Can>
@@ -342,111 +416,145 @@ function AccountsPanel() {
   );
 }
 
-// UJ-07: unknown-sender queue. Link a pending sender to an org, or ignore it.
-// Unknown senders: link an email to a person (D29) or an address/domain to an org.
+// Cap per group so a long directory stays a short, type-to-narrow list.
+const PICKER_LIMIT = 10;
+
+// Type-to-search over people + organizations; picking one fires onPick.
+function LinkPicker({
+  people,
+  orgs,
+  onPick,
+}: {
+  people: AccountSummary[];
+  orgs: Organization[];
+  onPick: (kind: "a" | "o", id: number) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const match = (name?: string) => (name ?? "").toLowerCase().includes(q);
+  const shownPeople = people.filter((a) => match(a.name)).slice(0, PICKER_LIMIT);
+  const shownOrgs = orgs.filter((o) => match(o.name)).slice(0, PICKER_LIMIT);
+  return (
+    <Combobox
+      placeholder="Search person or organization"
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
+      onOptionSelect={(_, d) => {
+        const [kind, id] = (d.optionValue ?? "").split(":");
+        setQuery(d.optionText ?? "");
+        onPick(kind as "a" | "o", Number(id));
+      }}
+    >
+      {shownPeople.length > 0 && (
+        <OptionGroup label="People">
+          {shownPeople.map((a) => (
+            <Option key={`a${a.id}`} value={`a:${a.id}`} text={a.name ?? ""}>{a.name}</Option>
+          ))}
+        </OptionGroup>
+      )}
+      {shownOrgs.length > 0 && (
+        <OptionGroup label="Organizations">
+          {shownOrgs.map((o) => (
+            <Option key={`o${o.id}`} value={`o:${o.id}`} text={o.name ?? ""}>{o.name}</Option>
+          ))}
+        </OptionGroup>
+      )}
+      {shownPeople.length + shownOrgs.length === 0 && <Option disabled text="">No matches</Option>}
+    </Combobox>
+  );
+}
+
+// UJ-07: unknown-sender queue. Link an email to a person (D29) or an
+// address/domain to an org, or ignore it.
 function SendersPanel() {
   const q = useSenders("new");
   const orgs = useOrganizations();
   const people = useAccounts();
-  const patch = usePatchSender();
-  const link = useLinkSenderToAccount();
+  const { mutate: patch } = usePatchSender();
+  const { mutate: link } = useLinkSenderToAccount();
+  // Memoised so a refetch doesn't remount the pickers mid-typing.
+  const cols = useMemo<ColDef<Sender>[]>(
+    () => [
+      { headerName: "Match", flex: 1, minWidth: 200, valueGetter: (p) => `${p.data?.match_type}: ${p.data?.match_value}` },
+      { field: "hit_count", headerName: "Hits", maxWidth: 90 },
+      { headerName: "Last seen", minWidth: 160, valueGetter: (p) => dateTime(p.data?.last_seen) },
+      {
+        headerName: "Link to",
+        flex: 1,
+        minWidth: 280,
+        sortable: false,
+        filter: false,
+        // Let the combobox own arrow/enter keys instead of the grid.
+        suppressKeyboardEvent: () => true,
+        cellRenderer: (p: { data?: Sender }) =>
+          p.data ? (
+            <LinkPicker
+              people={p.data.match_type === "email" ? (people.data ?? []) : []}
+              orgs={orgs.data ?? []}
+              onPick={(kind, id) => {
+                if (kind === "a") link({ id: p.data!.id!, account_id: id });
+                else patch({ id: p.data!.id!, org_id: id, status: "linked" });
+              }}
+            />
+          ) : null,
+      },
+      {
+        headerName: "",
+        maxWidth: 110,
+        sortable: false,
+        filter: false,
+        cellRenderer: (p: { data?: Sender }) => (
+          <Button size="small" onClick={() => p.data && patch({ id: p.data.id!, status: "ignored" })}>Ignore</Button>
+        ),
+      },
+    ],
+    [people.data, orgs.data, patch, link],
+  );
+  return <Query q={q}>{(senders) => <DataGrid rows={senders} cols={cols} rowId={(r) => String(r.id)} />}</Query>;
+}
+
+// Added orgs are contractors (the agent is seeded). A domain links their mail
+// to them straight away instead of landing in Unknown senders.
+function NewOrgDialog() {
+  const create = useCreateOrganization();
+  const [name, setName] = useState("");
+  const [domain, setDomain] = useState("");
   return (
-    <div>
-      <Title3>Unknown senders</Title3>
-      <Query q={q}>
-        {(senders) => (
-          <Table size="small">
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell>Match</TableHeaderCell>
-                <TableHeaderCell>Hits</TableHeaderCell>
-                <TableHeaderCell>Last seen</TableHeaderCell>
-                <TableHeaderCell>Link to</TableHeaderCell>
-                <TableHeaderCell />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {senders.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell>{s.match_type}: {s.match_value}</TableCell>
-                  <TableCell>{s.hit_count}</TableCell>
-                  <TableCell>{dateTime(s.last_seen)}</TableCell>
-                  <TableCell>
-                    <Dropdown
-                      placeholder="Person or organization"
-                      onOptionSelect={(_, d) => {
-                        const [kind, id] = (d.optionValue ?? "").split(":");
-                        if (kind === "a") link.mutate({ id: s.id!, account_id: Number(id) });
-                        else patch.mutate({ id: s.id!, org_id: Number(id), status: "linked" });
-                      }}
-                    >
-                      {s.match_type === "email" && (
-                        <OptionGroup label="People">
-                          {(people.data ?? []).map((a) => (
-                            <Option key={`a${a.id}`} value={`a:${a.id}`} text={a.name ?? ""}>{a.name}</Option>
-                          ))}
-                        </OptionGroup>
-                      )}
-                      <OptionGroup label="Organizations">
-                        {(orgs.data ?? []).map((o) => (
-                          <Option key={`o${o.id}`} value={`o:${o.id}`} text={o.name ?? ""}>{o.name}</Option>
-                        ))}
-                      </OptionGroup>
-                    </Dropdown>
-                  </TableCell>
-                  <TableCell>
-                    <Button size="small" onClick={() => patch.mutate({ id: s.id!, status: "ignored" })}>
-                      Ignore
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Query>
-    </div>
+    <FormDialog
+      trigger={<Button appearance="primary" icon={<Add20Regular />}>Add organization</Button>}
+      title="Add a contractor"
+      submitLabel="Add"
+      disabled={!name}
+      pending={create.isPending}
+      error={create.error}
+      onOpenChange={(open) => { if (!open) { setName(""); setDomain(""); create.reset(); } }}
+      onSubmit={(close) => create.mutate({ name, kind: "contractor", domain: domain.trim() || undefined }, { onSuccess: close })}
+    >
+      <Field label="Name" required>
+        <Input value={name} onChange={(_, d) => setName(d.value)} />
+      </Field>
+      <Field label="Email domain" hint="e.g. acme.co.uk. Leave blank if they email from a personal address like gmail.">
+        <Input value={domain} onChange={(_, d) => setDomain(d.value)} />
+      </Field>
+    </FormDialog>
   );
 }
+
+const orgCols: ColDef<Organization>[] = [
+  { field: "name", flex: 1, minWidth: 160 },
+  { field: "kind", maxWidth: 140, cellRenderer: (p: { value?: string }) => <Badge appearance="tint">{p.value}</Badge> },
+  { headerName: "Email domains", flex: 1, minWidth: 180, valueGetter: (p) => (p.data?.domains ?? []).join(", ") },
+];
 
 function OrgsPanel() {
   const s = useStyles();
   const q = useOrganizations();
-  const create = useCreateOrganization();
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState<"agent" | "contractor">("contractor");
   return (
     <div>
-      <Title3>Organizations</Title3>
-      <div className={s.form}>
-        <Field label="Name"><Input value={name} onChange={(_, d) => setName(d.value)} /></Field>
-        <Field label="Kind">
-          <Dropdown value={kind} selectedOptions={[kind]} onOptionSelect={(_, d) => setKind(d.optionValue as "agent" | "contractor")}>
-            <Option value="agent">agent</Option>
-            <Option value="contractor">contractor</Option>
-          </Dropdown>
-        </Field>
-        <Button appearance="primary" disabled={create.isPending || !name} onClick={() => create.mutate({ name, kind }, { onSuccess: () => setName("") })}>
-          Add
-        </Button>
-      </div>
-      <Query q={q}>
-        {(orgs) => (
-          <Table size="small">
-            <TableHeader>
-              <TableRow><TableHeaderCell>Name</TableHeaderCell><TableHeaderCell>Kind</TableHeaderCell></TableRow>
-            </TableHeader>
-            <TableBody>
-              {orgs.map((o) => (
-                <TableRow key={o.id}>
-                  <TableCell>{o.name}</TableCell>
-                  <TableCell><Badge appearance="tint">{o.kind}</Badge></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Query>
+      <Can perm="org:manage">
+        <div className={s.actions}><NewOrgDialog /></div>
+      </Can>
+      <Query q={q}>{(orgs) => <DataGrid rows={orgs} cols={orgCols} rowId={(r) => String(r.id)} />}</Query>
     </div>
   );
 }
@@ -454,122 +562,117 @@ function OrgsPanel() {
 // Split a comma/space-separated address list into a clean array.
 const parseEmails = (text: string) => text.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean);
 
+function NewAliasDialog({ taken }: { taken: string[] }) {
+  const save = useSaveMailAlias();
+  const [localPart, setLocalPart] = useState("");
+  const [forwardTo, setForwardTo] = useState("");
+  // PUT replaces, so an existing name is changed via Edit, not re-added.
+  const exists = taken.includes(localPart);
+  return (
+    <FormDialog
+      trigger={<Button appearance="primary" icon={<Add20Regular />}>Add address</Button>}
+      title="Add a forwarding address"
+      submitLabel="Add"
+      disabled={!localPart || !forwardTo || exists}
+      pending={save.isPending}
+      error={save.error}
+      onOpenChange={(open) => { if (!open) { setLocalPart(""); setForwardTo(""); save.reset(); } }}
+      onSubmit={(close) => save.mutate({ local_part: localPart, forward_to: parseEmails(forwardTo) }, { onSuccess: close })}
+    >
+      <Field label="Address" required validationMessage={exists ? "Already exists — use Edit." : undefined}>
+        <Input
+          value={localPart}
+          onChange={(_, d) => setLocalPart(d.value.toLowerCase())}
+          contentAfter={<Text>@lansburysquare.co.uk</Text>}
+        />
+      </Field>
+      <Field label="Forward to (comma-separated)" required>
+        <Input value={forwardTo} onChange={(_, d) => setForwardTo(d.value)} />
+      </Field>
+    </FormDialog>
+  );
+}
+
 // Board-provisioned @lansburysquare.co.uk forwards (D26). The agent can read
 // these (mail:read); only board/admin can change them (mail:manage).
 function MailPanel() {
   const s = useStyles();
   const q = useMailAliases();
-  const save = useSaveMailAlias();
-  const remove = useDeleteMailAlias();
+  const { mutate: remove, isPending: removing } = useDeleteMailAlias();
   const { has } = usePermissions();
   const canManage = has("mail:manage");
-  const [localPart, setLocalPart] = useState("");
-  const [forwardTo, setForwardTo] = useState("");
+  const cols = useMemo<ColDef<MailAlias>[]>(() => {
+    const c: ColDef<MailAlias>[] = [
+      { field: "address", flex: 1, minWidth: 220 },
+      {
+        headerName: "Forwards to",
+        flex: 2,
+        minWidth: 260,
+        autoHeight: true,
+        sortable: false,
+        valueGetter: (p) => p.data?.forward_to.map((f) => f.email).join(", "),
+        cellRenderer: (p: { data?: MailAlias }) => (
+          <div>
+            {p.data?.forward_to.map((d) => (
+              <div key={d.email}>
+                {d.email}{" "}
+                {d.verified === false && <Badge appearance="tint" color="warning">awaiting verification</Badge>}
+              </div>
+            ))}
+          </div>
+        ),
+      },
+    ];
+    if (canManage)
+      c.push({
+        headerName: "",
+        maxWidth: 170,
+        sortable: false,
+        filter: false,
+        cellRenderer: (p: { data?: MailAlias }) =>
+          p.data ? (
+            <>
+              <EditAliasDialog alias={p.data} />{" "}
+              <Button size="small" disabled={removing} onClick={() => remove(p.data!.local_part)}>Remove</Button>
+            </>
+          ) : null,
+      });
+    return c;
+  }, [canManage, remove, removing]);
   return (
     <div>
-      <Title3>Email addresses</Title3>
-      <Text block>
-        Addresses on the main domain forward to the destinations listed. Cloudflare emails each new destination a
-        verification link; mail only forwards once it's clicked.
-      </Text>
-      {canManage && (
-        <div className={s.form}>
-          <Field label="Address">
-            <Input value={localPart} onChange={(_, d) => setLocalPart(d.value.toLowerCase())} contentAfter={<Text>@lansburysquare.co.uk</Text>} />
-          </Field>
-          <Field label="Forward to (comma-separated)">
-            <Input value={forwardTo} onChange={(_, d) => setForwardTo(d.value)} />
-          </Field>
-          <Button
-            appearance="primary"
-            // PUT replaces, so an existing name is changed via Edit, not re-added.
-            disabled={save.isPending || !localPart || !forwardTo || !!q.data?.some((a) => a.local_part === localPart)}
-            onClick={() =>
-              save.mutate(
-                { local_part: localPart, forward_to: parseEmails(forwardTo) },
-                { onSuccess: () => { setLocalPart(""); setForwardTo(""); } }
-              )
-            }
-          >
-            Add
-          </Button>
-        </div>
-      )}
-      {save.error && <Text block className={s.error}>{save.error.message}</Text>}
-      <Query q={q}>
-        {(aliases) => (
-          <Table size="small">
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell>Address</TableHeaderCell>
-                <TableHeaderCell>Forwards to</TableHeaderCell>
-                {canManage && <TableHeaderCell />}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {aliases.map((a) => (
-                <TableRow key={a.local_part}>
-                  <TableCell>{a.address}</TableCell>
-                  <TableCell>
-                    {a.forward_to.map((d) => (
-                      <div key={d.email}>
-                        {d.email}{" "}
-                        {d.verified === false && <Badge appearance="tint" color="warning">awaiting verification</Badge>}
-                      </div>
-                    ))}
-                  </TableCell>
-                  {canManage && (
-                    <TableCell>
-                      <EditAliasDialog alias={a} />{" "}
-                      <Button size="small" disabled={remove.isPending} onClick={() => remove.mutate(a.local_part)}>Remove</Button>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Query>
+      <div className={s.intro}>
+        <Text>
+          Addresses on the main domain forward to the destinations listed. Cloudflare emails each new destination a
+          verification link; mail only forwards once it's clicked.
+        </Text>
+        {canManage && <NewAliasDialog taken={(q.data ?? []).map((a) => a.local_part)} />}
+      </div>
+      <Query q={q}>{(aliases) => <DataGrid rows={aliases} cols={cols} rowId={(r) => r.local_part} />}</Query>
     </div>
   );
 }
 
 function EditAliasDialog({ alias }: { alias: MailAlias }) {
-  const s = useStyles();
   const save = useSaveMailAlias();
-  const [open, setOpen] = useState(false);
   const [forwardTo, setForwardTo] = useState("");
   return (
-    <Dialog open={open} onOpenChange={(_, d) => { setOpen(d.open); if (d.open) setForwardTo(alias.forward_to.map((f) => f.email).join(", ")); }}>
-      <DialogTrigger disableButtonEnhancement>
-        <Button size="small">Edit</Button>
-      </DialogTrigger>
-      <DialogSurface>
-        <DialogBody>
-          <DialogTitle>{alias.address}</DialogTitle>
-          <DialogContent className={s.dialogForm}>
-            <Field label="Forward to (comma-separated)" validationMessage={save.error?.message}>
-              <Input value={forwardTo} onChange={(_, d) => setForwardTo(d.value)} />
-            </Field>
-          </DialogContent>
-          <DialogActions>
-            <DialogTrigger disableButtonEnhancement><Button>Cancel</Button></DialogTrigger>
-            <Button
-              appearance="primary"
-              disabled={save.isPending || !forwardTo}
-              onClick={() =>
-                save.mutate(
-                  { local_part: alias.local_part, forward_to: parseEmails(forwardTo) },
-                  { onSuccess: () => setOpen(false) }
-                )
-              }
-            >
-              Save
-            </Button>
-          </DialogActions>
-        </DialogBody>
-      </DialogSurface>
-    </Dialog>
+    <FormDialog
+      trigger={<Button size="small">Edit</Button>}
+      title={alias.address}
+      submitLabel="Save"
+      disabled={!forwardTo}
+      pending={save.isPending}
+      error={save.error}
+      onOpenChange={(open) => { save.reset(); if (open) setForwardTo(alias.forward_to.map((f) => f.email).join(", ")); }}
+      onSubmit={(close) =>
+        save.mutate({ local_part: alias.local_part, forward_to: parseEmails(forwardTo) }, { onSuccess: close })
+      }
+    >
+      <Field label="Forward to (comma-separated)">
+        <Input value={forwardTo} onChange={(_, d) => setForwardTo(d.value)} />
+      </Field>
+    </FormDialog>
   );
 }
 
@@ -577,104 +680,91 @@ function EditAliasDialog({ alias }: { alias: MailAlias }) {
 const parsePerms = (text: string) =>
   [...new Set(text.split(/[\s,]+/).map((p) => p.trim()).filter(Boolean))].sort();
 
+function NewRoleDialog() {
+  const create = useCreateRole();
+  const [key, setKey] = useState("");
+  const [name, setName] = useState("");
+  return (
+    <FormDialog
+      trigger={<Button appearance="primary" icon={<Add20Regular />}>Add role</Button>}
+      title="Add a role"
+      submitLabel="Add"
+      disabled={!key || !name}
+      pending={create.isPending}
+      error={create.error}
+      onOpenChange={(open) => { if (!open) { setKey(""); setName(""); create.reset(); } }}
+      onSubmit={(close) => create.mutate({ key, name }, { onSuccess: close })}
+    >
+      <Field label="Key" required><Input value={key} onChange={(_, d) => setKey(d.value)} /></Field>
+      <Field label="Name" required><Input value={name} onChange={(_, d) => setName(d.value)} /></Field>
+    </FormDialog>
+  );
+}
+
+function EditRoleDialog({ role }: { role: Role }) {
+  const setPerms = useSetRolePermissions();
+  const [text, setText] = useState("");
+  return (
+    <FormDialog
+      trigger={<Button size="small">Edit</Button>}
+      title={`${role.name} permissions`}
+      submitLabel="Save"
+      pending={setPerms.isPending}
+      error={setPerms.error}
+      onOpenChange={(open) => { setPerms.reset(); if (open) setText((role.permissions ?? []).join(" ")); }}
+      onSubmit={(close) => setPerms.mutate({ key: role.key!, permissions: parsePerms(text) }, { onSuccess: close })}
+    >
+      <Field label="Permissions (space-separated)">
+        <Textarea value={text} onChange={(_, d) => setText(d.value)} placeholder="e.g. ticket:read ticket:* role:manage" />
+      </Field>
+    </FormDialog>
+  );
+}
+
 // RBAC roles + their permission sets (D18). Edit requires role:manage.
 function PermissionsPanel() {
   const s = useStyles();
   const q = useRoles();
-  const create = useCreateRole();
   const { has } = usePermissions();
   const canManage = has("role:manage");
-  const [key, setKey] = useState("");
-  const [name, setName] = useState("");
+  const cols = useMemo<ColDef<Role>[]>(() => {
+    const c: ColDef<Role>[] = [
+      {
+        headerName: "Role",
+        minWidth: 200,
+        valueGetter: (p) => p.data?.name,
+        cellRenderer: (p: { data?: Role }) => <>{p.data?.name} <Badge appearance="outline">{p.data?.key}</Badge></>,
+      },
+      {
+        headerName: "Permissions",
+        flex: 1,
+        minWidth: 300,
+        autoHeight: true,
+        sortable: false,
+        valueGetter: (p) => (p.data?.permissions ?? []).join(" "),
+        cellRenderer: (p: { data?: Role }) => (
+          <span className={s.badges}>
+            {(p.data?.permissions ?? []).map((perm) => <Badge key={perm} appearance="tint">{perm}</Badge>)}
+            {(p.data?.permissions ?? []).length === 0 && <em>none</em>}
+          </span>
+        ),
+      },
+    ];
+    if (canManage)
+      c.push({
+        headerName: "",
+        maxWidth: 100,
+        sortable: false,
+        filter: false,
+        cellRenderer: (p: { data?: Role }) => (p.data ? <EditRoleDialog role={p.data} /> : null),
+      });
+    return c;
+  }, [canManage, s.badges]);
   return (
     <div>
-      <Title3>Roles &amp; permissions</Title3>
-      {canManage && (
-        <div className={s.form}>
-          <Field label="Key"><Input value={key} onChange={(_, d) => setKey(d.value)} /></Field>
-          <Field label="Name"><Input value={name} onChange={(_, d) => setName(d.value)} /></Field>
-          <Button
-            appearance="primary"
-            disabled={create.isPending || !key || !name}
-            onClick={() => create.mutate({ key, name }, { onSuccess: () => { setKey(""); setName(""); } })}
-          >
-            Add role
-          </Button>
-        </div>
-      )}
-      <Query q={q}>
-        {(roles) => (
-          <Table size="small">
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell>Role</TableHeaderCell>
-                <TableHeaderCell>Permissions</TableHeaderCell>
-                {canManage && <TableHeaderCell>Edit</TableHeaderCell>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {roles.map((r) => (
-                <RoleRow key={r.key} role={r} canManage={canManage} />
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Query>
+      {canManage && <div className={s.actions}><NewRoleDialog /></div>}
+      <Query q={q}>{(roles) => <DataGrid rows={roles} cols={cols} rowId={(r) => r.key!} />}</Query>
     </div>
-  );
-}
-
-function RoleRow({ role, canManage }: { role: Role; canManage: boolean }) {
-  const setPerms = useSetRolePermissions();
-  const [editing, setEditing] = useState(false);
-  const [text, setText] = useState((role.permissions ?? []).join(" "));
-  return (
-    <TableRow>
-      <TableCell>{role.name} <Badge appearance="outline">{role.key}</Badge></TableCell>
-      <TableCell>
-        {editing ? (
-          <Input
-            value={text}
-            onChange={(_, d) => setText(d.value)}
-            placeholder="e.g. ticket:read ticket:* role:manage"
-            style={{ width: "100%" }}
-          />
-        ) : (
-          <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-            {(role.permissions ?? []).map((p) => (
-              <Badge key={p} appearance="tint">{p}</Badge>
-            ))}
-            {(role.permissions ?? []).length === 0 && <em>none</em>}
-          </span>
-        )}
-      </TableCell>
-      {canManage && (
-        <TableCell>
-          {editing ? (
-            <>
-              <Button
-                size="small"
-                appearance="primary"
-                disabled={setPerms.isPending}
-                onClick={() =>
-                  setPerms.mutate(
-                    { key: role.key!, permissions: parsePerms(text) },
-                    { onSuccess: () => setEditing(false) },
-                  )
-                }
-              >
-                Save
-              </Button>{" "}
-              <Button size="small" onClick={() => { setText((role.permissions ?? []).join(" ")); setEditing(false); }}>
-                Cancel
-              </Button>
-            </>
-          ) : (
-            <Button size="small" onClick={() => setEditing(true)}>Edit</Button>
-          )}
-        </TableCell>
-      )}
-    </TableRow>
   );
 }
 
@@ -948,7 +1038,7 @@ export function DirectoryPage() {
         {has("account:read") && <Tab value="accounts">Accounts</Tab>}
         {has("sender:read") && <Tab value="senders">Unknown senders</Tab>}
         {has("org:read") && <Tab value="orgs">Organizations</Tab>}
-        {has("mail:read") && <Tab value="mail">Email addresses</Tab>}
+        {has("mail:read") && <Tab value="mail">Email forwarding</Tab>}
         {has("role:read") && <Tab value="permissions">Permissions</Tab>}
       </TabList>
       {tab === "accounts" && <AccountsPanel />}

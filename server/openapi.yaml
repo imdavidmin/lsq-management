@@ -615,6 +615,10 @@ paths:
     post:
       tags: [directory]
       summary: Add an organization
+      description: >-
+        Defaults to a contractor. An optional `domain` adds a linked sender rule
+        so mail from it is attributed to the org at once, and links any pending
+        unknown senders at that domain. Personal mail domains are refused.
       requestBody:
         required: true
         content:
@@ -625,6 +629,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Organization" }
+        "409":
+          description: The domain already belongs to an organization.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
   /organizations/{id}:
     parameters:
       - { in: path, name: id, required: true, schema: { type: integer } }
@@ -635,7 +644,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/OrganizationCreate" }
+            schema: { $ref: "#/components/schemas/OrganizationUpdate" }
       responses:
         "200":
           content:
@@ -1377,7 +1386,15 @@ components:
         id: { type: integer }
         name: { type: string }
         kind: { type: string, enum: [agent, contractor] }
+        domains: { type: array, items: { type: string }, example: [acme.co.uk] }
     OrganizationCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        kind: { type: string, enum: [agent, contractor], default: contractor }
+        domain: { type: string, example: acme.co.uk }
+    OrganizationUpdate:
       type: object
       required: [name, kind]
       properties:

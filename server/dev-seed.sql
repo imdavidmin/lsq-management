@@ -27,7 +27,7 @@ INSERT OR IGNORE INTO organizations (id, name, kind) VALUES
   (3, 'AquaHeat HIU Services',    'contractor');
 INSERT OR IGNORE INTO senders (id, match_type, match_value, org_id, status, hit_count, first_seen, last_seen) VALUES
   (1, 'email',  'dave@dwellent.com',   1,    'linked', 5, '2026-06-01T09:00:00Z', '2026-08-18T14:00:00Z'),
-  (2, 'domain', 'windowshine.co.uk',   NULL, 'new',    3, '2026-08-10T08:30:00Z', '2026-08-19T11:00:00Z'),
+  (2, 'domain', 'windowshine.co.uk',   NULL, 'new',    4, '2026-08-10T08:30:00Z', '2026-11-06T13:20:00Z'),
   (3, 'email',  'contact@spam.co',     NULL, 'new',    1, '2026-08-20T07:15:00Z', '2026-08-20T07:15:00Z');
 
 -- Tickets ---------------------------------------------------------------------
@@ -87,7 +87,7 @@ INSERT OR IGNORE INTO grants (id, account_id, role_key, scope_type, scope_id) VA
 INSERT OR IGNORE INTO organizations (id, name, kind) VALUES (4, 'Fixit Maintenance', 'contractor');
 INSERT OR IGNORE INTO senders (id, match_type, match_value, org_id, status, hit_count, first_seen, last_seen) VALUES
   (4, 'domain', 'fixit.co.uk',   4, 'linked', 20, '2025-08-05T09:00:00Z', '2026-10-29T10:00:00Z'),
-  (5, 'domain', 'aquaheat.co.uk', 3, 'linked', 8, '2025-09-01T09:00:00Z', '2026-10-20T10:00:00Z');
+  (5, 'domain', 'aquaheat.co.uk', 3, 'linked', 9, '2025-09-01T09:00:00Z', '2026-10-30T15:12:00Z');
 
 INSERT OR IGNORE INTO tickets (id, title, building_id, unit_id, created_by, category, classified_by, needs_contractor, status, created_at, resolved_at) VALUES
   (100, 'Noise from building works', 5, 9, 23, 'complaint', 'resident', 0, 'resolved', '2025-08-04T13:48:00Z', '2025-08-11T12:23:00Z'),
@@ -751,3 +751,67 @@ INSERT OR IGNORE INTO metric_values (id, metric_key, service_year, value, result
   (105, 'con.hiu_servicing',           2025, 0.92, 1,      13, 10, '2026-07-15T10:00:00Z', '184 of 200 HIUs serviced.'),
   (106, 'con.window_cleaning',         2025, 2,    1,      13, 10, '2026-07-20T10:00:00Z', NULL),
   (107, 'proj.project_timelines',      2025, 0.8,  0.8421, 13, 10, '2026-07-30T10:00:00Z', 'Podium works slipped a month.');
+
+-- Contractor email demo (Oct–Nov 2026) ----------------------------------------
+-- Four live contractor tickets showing how inbound mail is attributed (UJ-04)
+-- and what that does to the contractor SLAs (D21, D24). Email never changes a
+-- ticket's status; it adds comments (and enquiry markers) that start/stop clocks.
+--   200 GreenScape  — domain registered: reply classified contractor, all clocks met.
+--   201 AquaHeat    — contractor asks to confirm a slot, agent goes quiet:
+--                     'Reply to contractor' + 'Chase silent contractor' breached.
+--   202 Fixit       — operative replies from gmail: classed resident and queued in
+--                     Unknown senders, so the contractor looks silent and
+--                     'Chase silent contractor' breaches. Link the sender to Fixit.
+--   203 WindowShine — domain not registered: the agent's enquiry isn't recognised
+--                     (no marker), the reply is classed contractor by the business-
+--                     domain fallback; its 'Reply to contractor' clock is running.
+INSERT OR IGNORE INTO senders (id, match_type, match_value, org_id, status, hit_count, first_seen, last_seen) VALUES
+  (6, 'domain', 'greenscape.co.uk',      2,    'linked', 2, '2026-10-20T14:31:00Z', '2026-10-22T16:40:00Z'),
+  (7, 'email',  'steve.fixit@gmail.com', NULL, 'new',    1, '2026-11-02T17:48:00Z', '2026-11-02T17:48:00Z');
+
+INSERT OR IGNORE INTO tickets (id, title, building_id, unit_id, created_by, category, classified_by, needs_contractor, status, created_at, resolved_at) VALUES
+  (200, 'Overgrown hedges on podium walkway', 7, NULL, 24, 'communal_repair', 'agent',    1, 'resolved',          '2026-10-19T09:10:00Z', '2026-10-23T08:45:00Z'),
+  (201, 'HIU banging when heating comes on',  3, 6,    20, 'reactive_fault',  'resident', 1, 'pending_3rd_party', '2026-10-28T08:20:00Z', NULL),
+  (202, 'Car park barrier stuck open',        9, NULL, 13, 'site_defect',     'agent',    1, 'pending_3rd_party', '2026-10-26T10:05:00Z', NULL),
+  (203, 'Communal windows left streaky',      4, 8,    22, 'cleaning',        'resident', 1, 'open',              '2026-10-29T09:30:00Z', NULL);
+
+INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_email, actor_role, type, from_value, to_value, body, source, ai_processed, ai_summary) VALUES
+  -- 200 GreenScape: the happy path.
+  (2000, 'ticket', 200, '2026-10-19T09:10:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'Hedges either side of the podium walkway are overhanging the path.', 'ui', 0, NULL),
+  (2001, 'ticket', 200, '2026-10-19T09:10:00Z', 24, NULL, 'agent', 'classify', NULL, 'communal_repair', NULL, 'ui', 0, NULL),
+  (2002, 'ticket', 200, '2026-10-19T09:12:00Z', 24, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui', 0, NULL),
+  (2003, 'ticket', 200, '2026-10-19T10:02:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'Hi Mark, could GreenScape cut back the podium hedges this week? Ticket copied in.', 'email', 1, 'Agent asks GreenScape to cut back the podium hedges this week.'),
+  (2004, 'ticket', 200, '2026-10-19T10:02:00Z', 24, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email', 0, NULL),
+  (2005, 'ticket', 200, '2026-10-19T10:00:00Z', 24, NULL, 'agent', 'status', 'open', 'pending_3rd_party', NULL, 'ui', 0, NULL),
+  (2006, 'ticket', 200, '2026-10-20T14:31:00Z', NULL, 'mark@greenscape.co.uk', 'contractor', 'comment', NULL, NULL, 'We can attend Thursday 22nd from 8am. Can the concierge give us access to the bin store for green waste?', 'email', 1, 'GreenScape can attend Thu 22 Oct from 8am; asks for bin store access.'),
+  (2007, 'ticket', 200, '2026-10-21T09:05:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'Thursday is fine, the concierge has the bin store key.', 'email', 1, 'Agent confirms Thursday and bin store access via the concierge.'),
+  (2008, 'ticket', 200, '2026-10-22T16:40:00Z', NULL, 'mark@greenscape.co.uk', 'contractor', 'comment', NULL, NULL, 'All hedges cut back and green waste removed. Photos attached.', 'email', 1, 'GreenScape reports the hedges are cut back and waste removed.'),
+  (2009, 'ticket', 200, '2026-10-23T08:30:00Z', 24, NULL, 'agent', 'marker', NULL, 'attended', 'GreenScape attended 22 Oct.', 'ui', 0, NULL),
+  (2010, 'ticket', 200, '2026-10-23T08:45:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'Checked on site this morning: path clear. Resolving.', 'ui', 0, NULL),
+  (2011, 'ticket', 200, '2026-10-23T08:45:00Z', 24, NULL, 'agent', 'status', 'pending_3rd_party', 'resolved', NULL, 'ui', 0, NULL),
+
+  -- 201 AquaHeat: contractor waiting on the agent.
+  (2020, 'ticket', 201, '2026-10-28T08:20:00Z', 20, NULL, 'resident', 'comment', NULL, NULL, 'The HIU bangs loudly every morning when the heating comes on.', 'ui', 0, NULL),
+  (2021, 'ticket', 201, '2026-10-28T08:20:00Z', 20, NULL, 'resident', 'classify', NULL, 'reactive_fault', NULL, 'ui', 0, NULL),
+  (2022, 'ticket', 201, '2026-10-28T10:00:00Z', 24, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui', 0, NULL),
+  (2023, 'ticket', 201, '2026-10-28T11:30:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'AquaHeat, please inspect the HIU in Flat 3.04 (banging on start-up).', 'email', 1, 'Agent asks AquaHeat to inspect a banging HIU in Flat 3.04.'),
+  (2024, 'ticket', 201, '2026-10-28T11:30:00Z', 24, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email', 0, NULL),
+  (2025, 'ticket', 201, '2026-10-28T11:28:00Z', 24, NULL, 'agent', 'status', 'open', 'pending_3rd_party', NULL, 'ui', 0, NULL),
+  (2026, 'ticket', 201, '2026-10-30T15:12:00Z', NULL, 'tom@aquaheat.co.uk', 'contractor', 'comment', NULL, NULL, 'Engineer free Tue 3 or Wed 4 Nov, morning. Please confirm a slot and that the resident will be in.', 'email', 1, 'AquaHeat offers Tue 3 or Wed 4 Nov AM; needs a confirmed slot and access.'),
+  (2027, 'ticket', 201, '2026-11-03T09:00:00Z', 20, NULL, 'resident', 'comment', NULL, NULL, 'Has anyone confirmed the engineer? Still banging every morning.', 'email', 1, 'Resident chases the engineer booking; fault continues.'),
+
+  -- 202 Fixit: reply from a personal address goes unrecognised.
+  (2040, 'ticket', 202, '2026-10-26T10:05:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Car park entry barrier is stuck in the raised position.', 'ui', 0, NULL),
+  (2041, 'ticket', 202, '2026-10-26T10:05:00Z', 13, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui', 0, NULL),
+  (2042, 'ticket', 202, '2026-10-26T10:07:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui', 0, NULL),
+  (2043, 'ticket', 202, '2026-10-26T11:40:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Fixit, please attend to repair the car park barrier.', 'email', 1, 'Agent asks Fixit to repair the car park barrier.'),
+  (2044, 'ticket', 202, '2026-10-26T11:40:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email', 0, NULL),
+  (2045, 'ticket', 202, '2026-10-26T11:38:00Z', 13, NULL, 'agent', 'status', 'open', 'pending_3rd_party', NULL, 'ui', 0, NULL),
+  (2046, 'ticket', 202, '2026-11-02T17:48:00Z', NULL, 'steve.fixit@gmail.com', 'resident', 'comment', NULL, NULL, 'Hi, Steve from Fixit. I can come Thursday to look at the barrier motor.', 'email', 1, 'Steve (Fixit) offers to inspect the barrier motor on Thursday.'),
+
+  -- 203 WindowShine: unregistered contractor domain.
+  (2060, 'ticket', 203, '2026-10-29T09:30:00Z', 22, NULL, 'resident', 'comment', NULL, NULL, 'Windows on the 2nd floor landing were left streaky after this week''s clean.', 'ui', 0, NULL),
+  (2061, 'ticket', 203, '2026-10-29T09:30:00Z', 22, NULL, 'resident', 'classify', NULL, 'cleaning', NULL, 'ui', 0, NULL),
+  (2062, 'ticket', 203, '2026-10-29T10:15:00Z', 24, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui', 0, NULL),
+  (2063, 'ticket', 203, '2026-10-29T11:00:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'WindowShine, please re-clean the 2nd floor landing windows at Lamington Heights.', 'email', 1, 'Agent asks WindowShine to re-clean the 2nd floor landing windows.'),
+  (2064, 'ticket', 203, '2026-11-06T13:20:00Z', NULL, 'ops@windowshine.co.uk', 'contractor', 'comment', NULL, NULL, 'Apologies. We can re-clean on our next visit, Thu 12 Nov, unless you need it sooner?', 'email', 1, 'WindowShine offers a re-clean on Thu 12 Nov and asks if sooner is needed.');

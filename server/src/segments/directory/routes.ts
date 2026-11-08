@@ -8,6 +8,7 @@ import { requireSession } from "../../middleware/session";
 import { requirePermission } from "../../middleware/rbac";
 import { logAccess } from "../../lib/audit";
 import { primaryRole } from "../../../../common/roles";
+import { isPersonalDomain } from "../../../../common/senders";
 import * as svc from "./service";
 
 const serializeAccount = (a: Account) => ({ ...a, active: !!a.active });
@@ -160,9 +161,24 @@ directory.get("/organizations", requirePermission("org:read"), async (c) =>
   c.json(await svc.listOrganizations(c.env))
 );
 
+// Orgs added here are contractors; the agent is seeded. A personal domain would
+// sweep residents' mail into the org, so it's refused.
+const domainSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .transform((d) => d.replace(/^@/, ""))
+  .pipe(z.string().regex(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/, "a domain like acme.co.uk"))
+  .refine((d) => !isPersonalDomain(d), "personal mail domains can't belong to an organization");
+
 directory.post("/organizations", requirePermission("org:manage"), async (c) => {
-  const { name, kind } = await body(c, orgSchema);
-  return c.json(await svc.createOrganization(c.env, name, kind), 201);
+  const { name, kind, domain } = await body(
+    c,
+    orgSchema.extend({ kind: orgSchema.shape.kind.default("contractor"), domain: domainSchema.optional() })
+  );
+  const org = await svc.createOrganization(c.env, name, kind, domain);
+  if (org === "domain_taken") conflict("that domain already belongs to an organization");
+  return c.json(org, 201);
 });
 
 directory.patch("/organizations/:id", requirePermission("org:manage"), async (c) => {

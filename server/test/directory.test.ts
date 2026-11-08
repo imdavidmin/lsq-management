@@ -265,6 +265,27 @@ describe("directory", () => {
     expect(linked.status).toBe("linked");
   });
 
+  it("adds a contractor with a domain so its mail is no longer unknown", async () => {
+    const board = await login("board7@lsq.test", "board", "estate", null);
+    await env.DB.prepare(
+      `INSERT INTO senders (match_type, match_value, status, first_seen, last_seen)
+         VALUES ('email', 'joe@sparks.co.uk', 'new', 'x', 'x')`
+    ).run();
+
+    const res = await post("/api/organizations", board.cookie, { name: "Sparks Ltd", domain: "@Sparks.co.uk" });
+    expect(res.status).toBe(201);
+    const org = (await res.json()) as any;
+    expect(org).toMatchObject({ kind: "contractor", domains: ["sparks.co.uk"] });
+
+    const queue = (await (await req("/api/senders?status=new", board.cookie)).json()) as any[];
+    expect(queue.map((s) => s.match_value)).not.toContain("joe@sparks.co.uk");
+    const orgs = (await (await req("/api/organizations", board.cookie)).json()) as any[];
+    expect(orgs.find((o) => o.id === org.id).domains).toEqual(["sparks.co.uk"]);
+
+    expect((await post("/api/organizations", board.cookie, { name: "Dup", domain: "sparks.co.uk" })).status).toBe(409);
+    expect((await post("/api/organizations", board.cookie, { name: "Gm", domain: "gmail.com" })).status).toBe(400);
+  });
+
   it("creates a building + unit and lists units", async () => {
     const board = await login("board6@lsq.test", "board", "estate", null);
     const b = (await (await post("/api/buildings", board.cookie, { name: "Block C" })).json()) as any;

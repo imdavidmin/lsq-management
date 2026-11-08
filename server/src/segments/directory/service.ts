@@ -22,6 +22,7 @@ export interface Organization {
   id: number;
   name: string;
   kind: "agent" | "contractor";
+  domains: string[];
 }
 export interface Sender {
   id: number;
@@ -391,16 +392,49 @@ export async function createUnit(env: Env, buildingId: number, label: string): P
 }
 
 // ---- organizations -------------------------------------------------------
-export const listOrganizations = (env: Env) =>
-  all<Organization>(env.DB, "SELECT id, name, kind FROM organizations ORDER BY name");
+// Each org with the email domains linked to it (sender rules, UJ-04).
+export async function listOrganizations(env: Env): Promise<Organization[]> {
+  const rows = await all<Omit<Organization, "domains"> & { domains: string | null }>(
+    env.DB,
+    `SELECT o.id, o.name, o.kind, group_concat(s.match_value) AS domains
+       FROM organizations o
+       LEFT JOIN senders s ON s.org_id = o.id AND s.match_type = 'domain' AND s.status = 'linked'
+      GROUP BY o.id ORDER BY o.name`
+  );
+  return rows.map((r) => ({ ...r, domains: r.domains ? r.domains.split(",") : [] }));
+}
 
+// New org + optional domain rule in one batch, so mail from the domain is
+// attributed to it at once. Pending unknown senders at that domain are linked
+// too: their email rows would otherwise match ahead of the domain rule.
 export async function createOrganization(
   env: Env,
   name: string,
-  kind: Organization["kind"]
-): Promise<Organization> {
-  const res = await run(env.DB, "INSERT INTO organizations (name, kind) VALUES (?, ?)", name, kind);
-  return { id: res.meta.last_row_id as number, name, kind };
+  kind: Organization["kind"],
+  domain?: string
+): Promise<Organization | "domain_taken"> {
+  if (domain && (await one(env.DB, "SELECT 1 FROM senders WHERE match_value = ? AND org_id IS NOT NULL", domain)))
+    return "domain_taken";
+  const now = iso();
+  const insertOrg = env.DB.prepare("INSERT INTO organizations (name, kind) VALUES (?, ?) RETURNING id").bind(name, kind);
+  if (!domain) {
+    const { id } = (await insertOrg.first<{ id: number }>())!;
+    return { id, name, kind, domains: [] };
+  }
+  const [org] = await env.DB.batch<{ id: number }>([
+    insertOrg,
+    env.DB.prepare(
+      `INSERT INTO senders (match_type, match_value, org_id, status, hit_count, first_seen, last_seen)
+         VALUES ('domain', ?, last_insert_rowid(), 'linked', 0, ?, ?)
+       ON CONFLICT(match_value) DO UPDATE SET org_id = excluded.org_id, status = 'linked'`
+    ).bind(domain, now, now),
+    env.DB.prepare(
+      `UPDATE senders SET status = 'linked',
+              org_id = (SELECT org_id FROM senders WHERE match_value = ?)
+        WHERE match_type = 'email' AND status = 'new' AND match_value LIKE '%@' || ?`
+    ).bind(domain, domain),
+  ]);
+  return { id: org!.results[0]!.id, name, kind, domains: [domain] };
 }
 
 export async function patchOrganization(
@@ -408,7 +442,7 @@ export async function patchOrganization(
   id: number,
   name: string,
   kind: Organization["kind"]
-): Promise<Organization | null> {
+): Promise<Omit<Organization, "domains"> | null> {
   const res = await run(
     env.DB,
     "UPDATE organizations SET name = ?, kind = ? WHERE id = ?",

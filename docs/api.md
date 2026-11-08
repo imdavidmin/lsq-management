@@ -74,7 +74,7 @@ target (D18). `public` = no session (login only).
 | GET    | `/buildings/{id}/units`    | `dir:read`       | Units in a building                                  | —            |
 | POST   | `/units`                   | `dir:manage`     | Add a unit                                           | —            |
 | GET    | `/organizations`           | `org:read`       | Agent + contractors                                  | —            |
-| POST   | `/organizations`           | `org:manage`     | Add an organization                                  | —            |
+| POST   | `/organizations`           | `org:manage`     | Add a contractor, optionally with its email domain (linked sender rule) | —            |
 | PATCH  | `/organizations/{id}`      | `org:manage`     | Edit an organization                                 | —            |
 | GET    | `/senders`                 | `sender:read`    | Sender rules; `?status=new` = unknown queue          | UJ-04, UJ-07 |
 | POST   | `/senders`                 | `sender:manage`  | Add an email/domain → org rule                       | UJ-07        |

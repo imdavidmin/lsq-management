@@ -1222,7 +1222,10 @@ export interface paths {
             };
         };
         put?: never;
-        /** Add an organization */
+        /**
+         * Add an organization
+         * @description Defaults to a contractor. An optional `domain` adds a linked sender rule so mail from it is attributed to the org at once, and links any pending unknown senders at that domain. Personal mail domains are refused.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -1242,6 +1245,15 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["Organization"];
+                    };
+                };
+                /** @description The domain already belongs to an organization. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
                     };
                 };
             };
@@ -1279,7 +1291,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["OrganizationCreate"];
+                    "application/json": components["schemas"]["OrganizationUpdate"];
                 };
             };
             responses: {
@@ -2648,8 +2660,24 @@ export interface components {
             name?: string;
             /** @enum {string} */
             kind?: "agent" | "contractor";
+            /**
+             * @example [
+             *       "acme.co.uk"
+             *     ]
+             */
+            domains?: string[];
         };
         OrganizationCreate: {
+            name: string;
+            /**
+             * @default contractor
+             * @enum {string}
+             */
+            kind: "agent" | "contractor";
+            /** @example acme.co.uk */
+            domain?: string;
+        };
+        OrganizationUpdate: {
             name: string;
             /** @enum {string} */
             kind: "agent" | "contractor";
