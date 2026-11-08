@@ -49,6 +49,7 @@ target (D18). `public` = no session (login only).
 | PATCH  | `/tickets/{id}`        | `ticket:update`  | Status / category (reassign) / flags             | UJ-06        |
 | GET    | `/tickets/{id}/events` | `ticket:read`    | Timeline (comments, markers, chase)              | UJ-02        |
 | POST   | `/tickets/{id}/events` | `ticket:comment` | Add a UI comment/update                          | UJ-02        |
+| GET    | `/tickets/{id}/attachments/{attachmentId}` | `ticket:read` | Download an email attachment / original `.eml` | D28 |
 | POST   | `/tickets/{id}/markers` | `ticket:update` | Record "contractor attended" + notes             | D21          |
 
 ## directory · identity, access, external parties
@@ -59,7 +60,10 @@ target (D18). `public` = no session (login only).
 | POST   | `/accounts`                | `account:manage` | Create/invite an account                             | —            |
 | GET    | `/accounts/{id}`           | `account:read`   | Account detail + grants                              | —            |
 | PATCH  | `/accounts/{id}`           | `account:manage` | Rename / activate / deactivate                       | D17          |
+| DELETE | `/accounts/{id}`           | `account:manage` | Erase (move-out): anonymise, keep ticket record      | D30          |
 | GET    | `/accounts/{id}/grants`    | `grant:read`     | Grants held by an account                            | UJ-09        |
+| POST   | `/accounts/{id}/emails`    | `account:manage` | Add an extra inbound address (never a login)         | D29          |
+| DELETE | `/accounts/{id}/emails/{email}` | `account:manage` | Remove an extra inbound address                 | D29          |
 | POST   | `/grants`                  | `grant:manage`   | Assign a role scoped to a thing (incl. ticket share) | UJ-08        |
 | DELETE | `/grants/{id}`             | `grant:manage`   | Revoke a grant                                       | —            |
 | GET    | `/roles`                   | `role:read`      | Roles + their permissions                            | —            |
@@ -75,7 +79,11 @@ target (D18). `public` = no session (login only).
 | GET    | `/senders`                 | `sender:read`    | Sender rules; `?status=new` = unknown queue          | UJ-04, UJ-07 |
 | POST   | `/senders`                 | `sender:manage`  | Add an email/domain → org rule                       | UJ-07        |
 | PATCH  | `/senders/{id}`            | `sender:manage`  | Link to org / ignore                                 | UJ-07        |
+| POST   | `/senders/{id}/account`    | `sender:manage`  | Link an unknown email sender to a person             | D29          |
 | DELETE | `/senders/{id}`            | `sender:manage`  | Remove a rule                                        | —            |
+| GET    | `/mail-aliases`            | `mail:read`      | Main-domain forwards + destination verification      | D26          |
+| PUT    | `/mail-aliases/{local_part}` | `mail:manage`  | Create/replace `<name>@…` destinations (board only)  | D26          |
+| DELETE | `/mail-aliases/{local_part}` | `mail:manage`  | Remove an alias                                      | D26          |
 
 ## scoring · `/score`, `/metrics`, `/slas`, `/config`, `/reports`
 
@@ -117,7 +125,7 @@ Inbound email is split across two Workers plus a queue (D20); the cron stays on
 `server`:
 
 - **email** (`lsq-email`) — Cloudflare Email `email()`: parse
-  `<id>@lansburysquare.co.uk`, reject unknown ticket ids at the door, stash the
+  `<id>@ticket.lansburysquare.co.uk`, reject unknown ticket ids at the door, stash the
   raw message in R2, and enqueue its key. Deliberately tiny (tight budget).
 - **ai** (`lsq-ai`) — queue consumer: fetch raw from R2, resolve sender (UJ-04),
   AI summary unless "no ai" (UJ-16), append the `comment` `events` row (UJ-03).

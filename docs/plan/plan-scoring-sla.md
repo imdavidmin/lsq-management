@@ -274,7 +274,7 @@ the weekend, and Dec 28 is a holiday, so only Dec 29 counts. The result is 1, so
    (classify) are both by the resident, so neither is a staff event.
 2. Tue Nov 3. The resident adds a comment (event #12). Its `event_by` group is
    resident, so it doesn't stop the SLA.
-3. Thu Nov 5 10:00. The agent replies by email to `110@lansburysquare.co.uk`:
+3. Thu Nov 5 10:00. The agent replies by email to `110@ticket.lansburysquare.co.uk`:
    - **email Worker:** the local part `110` matches a ticket. It stores the raw
      message in R2 and enqueues `{ticketId:110, from, subject, rawKey}`.
    - **ai Worker:** `resolveSender` finds the sender in `accounts`, and their
@@ -314,7 +314,7 @@ alone.
    `status needs_contractor:0 → needs_contractor:1`).
 2. Tue Nov 3 14:00. The agent emails the contractor:
    `From: sam@agentco.co.uk`, `To: info@fixit.co.uk`,
-   `Cc: 104@lansburysquare.co.uk`.
+   `Cc: 104@ticket.lansburysquare.co.uk`.
    - **email Worker:** the Cc address resolves to ticket 104. It stores the raw
      message in R2 and enqueues it.
    - **ai Worker:**

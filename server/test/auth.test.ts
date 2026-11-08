@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { app } from "../src/app";
 import { addGrant, seedAccount, seedOtp, sessionCookie } from "./helpers";
 
@@ -75,5 +75,33 @@ describe("auth", () => {
   it("me requires a session", async () => {
     const res = await app.request("/api/auth/me", {}, env);
     expect(res.status).toBe(401);
+  });
+});
+
+describe("outbound mail (MailerSend)", () => {
+  it("sends the OTP as Lansbury Square <ops@…>, and still 204s if MailerSend fails", async () => {
+    await seedAccount("mail@lsq.test", "Mail");
+    const sent: { url: string; auth: string | null; body: any }[] = [];
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      sent.push({ url: String(input), auth: new Headers(init?.headers).get("authorization"), body: JSON.parse(String(init?.body)) });
+      return new Response("upstream down", { status: 500 });
+    });
+    const res = await app.request(
+      "/api/auth/otp/request",
+      json({ email: "mail@lsq.test" }),
+      { ...env, MAILERSEND_API_KEY: "mlsn.test" }
+    );
+    spy.mockRestore();
+
+    expect(res.status).toBe(204); // failure is logged, never leaks (no enumeration)
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.url).toBe("https://api.mailersend.com/v1/email");
+    expect(sent[0]!.auth).toBe("Bearer mlsn.test");
+    expect(sent[0]!.body).toMatchObject({
+      from: { email: "ops@lansburysquare.co.uk", name: "Lansbury Square" },
+      to: [{ email: "mail@lsq.test" }],
+      subject: expect.any(String),
+      text: expect.stringMatching(/\d{6}/),
+    });
   });
 });

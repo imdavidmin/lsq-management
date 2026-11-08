@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { request } from "../../api/client";
-import type { Account, AccountDetail, AccountSummary, Building, GrantCreate, Organization, OrganizationCreate, Role, Sender, Unit } from "../../api/types";
+import type { Account, AccountDetail, AccountSummary, Building, GrantCreate, MailAlias, Organization, OrganizationCreate, Role, Sender, Unit } from "../../api/types";
 
 // Minimised list (no email/unit) — the GDPR default. See docs/gdpr.md.
 export const useAccounts = () =>
@@ -9,8 +9,23 @@ export const useAccounts = () =>
 export function useCreateAccount() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { email: string; name: string; unit_id?: number | null }) =>
+    mutationFn: (body: {
+      email: string;
+      name: string;
+      role_key: string;
+      building_id?: number | null;
+      unit?: string;
+      org_id?: number | null;
+    }) =>
       request<Account>("/accounts", { method: "POST", body }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["accounts"] }),
+  });
+}
+
+export function useDeleteAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => request<void>(`/accounts/${id}`, { method: "DELETE" }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["accounts"] }),
   });
 }
@@ -110,3 +125,54 @@ export const useUnits = (buildingId: number | null | undefined) =>
     enabled: buildingId != null,
     queryFn: () => request<Unit[]>(`/buildings/${buildingId}/units`),
   });
+
+// Board-provisioned @lansburysquare.co.uk forwards (D26).
+export const useMailAliases = () =>
+  useQuery({ queryKey: ["mail-aliases"], queryFn: () => request<MailAlias[]>("/mail-aliases") });
+
+export function useSaveMailAlias() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ local_part, forward_to }: { local_part: string; forward_to: string[] }) =>
+      request<MailAlias>(`/mail-aliases/${encodeURIComponent(local_part)}`, { method: "PUT", body: { forward_to } }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["mail-aliases"] }),
+  });
+}
+
+export function useDeleteMailAlias() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (localPart: string) =>
+      request<void>(`/mail-aliases/${encodeURIComponent(localPart)}`, { method: "DELETE" }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["mail-aliases"] }),
+  });
+}
+
+// Extra inbound addresses on an account (D29). Listed via the audited reveal.
+export function useAddAccountEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, email }: { id: number; email: string }) =>
+      request<void>(`/accounts/${id}/emails`, { method: "POST", body: { email } }),
+    onSuccess: (_r, v) => void qc.invalidateQueries({ queryKey: ["accounts", v.id] }),
+  });
+}
+
+export function useRemoveAccountEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, email }: { id: number; email: string }) =>
+      request<void>(`/accounts/${id}/emails/${encodeURIComponent(email)}`, { method: "DELETE" }),
+    onSuccess: (_r, v) => void qc.invalidateQueries({ queryKey: ["accounts", v.id] }),
+  });
+}
+
+// Unknown email sender → a person's extra address (D29).
+export function useLinkSenderToAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, account_id }: { id: number; account_id: number }) =>
+      request<void>(`/senders/${id}/account`, { method: "POST", body: { account_id } }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["senders"] }),
+  });
+}

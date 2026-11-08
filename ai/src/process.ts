@@ -1,5 +1,7 @@
+import PostalMime, { type Address } from "postal-mime";
 import type { InboundEmail } from "../../common/queue";
 import { primaryRole } from "../../common/roles";
+import { defaultRole } from "../../common/senders";
 import { all, one, run } from "./db";
 
 export interface Env {
@@ -16,25 +18,39 @@ interface Attribution {
   actor_role: string | null;
 }
 
-// Best-effort plaintext body: split headers from body at the first blank line.
-// ponytail: naive MIME (no multipart / base64 / quoted-printable). Add
-// postal-mime if the trial shows real mail needs it; threading never depends on
-// this (the email Worker resolved the ticket by recipient address already).
-function extractText(raw: string): string {
-  const split = raw.search(/\r?\n\r?\n/);
-  const body = split >= 0 ? raw.slice(split).trimStart() : raw;
-  return body.trim().slice(0, 10_000);
+// HTML-only mail → readable text: drop style/script, keep block breaks, strip tags.
+function htmlToText(html: string): string {
+  return html
+    .replace(/<(style|script)[\s\S]*?<\/\1>/gi, "")
+    .replace(/<br\s*\/?>|<\/(p|div|li|tr|h\d)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
 }
+
+// The readable message: text part, else HTML converted; capped (D28).
+const bodyOf = (email: { text?: string; html?: string }) =>
+  (email.text ?? (email.html ? htmlToText(email.html) : ""))
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 10_000);
 
 const domainOf = (email: string) => email.slice(email.lastIndexOf("@") + 1).toLowerCase();
 
-// Addresses in the To/Cc headers (folded lines joined), lowercased.
-function recipients(raw: string): string[] {
-  const split = raw.search(/\r?\n\r?\n/);
-  const headers = (split >= 0 ? raw.slice(0, split) : raw).replace(/\r?\n[ \t]+/g, " ");
-  const lines = headers.split(/\r?\n/).filter((l) => /^(to|cc):/i.test(l));
-  return lines.flatMap((l) => l.match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g) ?? []).map((e) => e.toLowerCase());
-}
+// To/Cc addresses (groups flattened), lowercased.
+const recipients = (list: Address[]): string[] =>
+  list
+    .flatMap((a) => (a.group ? a.group : [a]))
+    .map((m) => m.address?.toLowerCase())
+    .filter((e): e is string => !!e);
+
+// Safe R2 key segment for an attachment's filename.
+const safeName = (name: string | null) => (name ?? "attachment").replace(/[^\w.-]+/g, "_").slice(0, 100) || "attachment";
 
 // A contractor by sender rule, email before domain (same precedence as resolveSender).
 async function isContractor(env: Env, email: string): Promise<boolean> {
@@ -49,9 +65,16 @@ async function isContractor(env: Env, email: string): Promise<boolean> {
   return rule?.kind === "contractor";
 }
 
-// UJ-04: accounts email → senders email → senders domain → upsert unknown.
+// UJ-04: account email (primary or extra, D29) → senders email → senders domain
+// → upsert unknown. Without an organization the role defaults by domain (D29).
 async function resolveSender(env: Env, from: string, now: string): Promise<Attribution> {
-  const account = await one<{ id: number }>(env.DB, "SELECT id FROM accounts WHERE email = ? AND active = 1", from);
+  const account = await one<{ id: number }>(
+    env.DB,
+    `SELECT a.id FROM accounts a LEFT JOIN account_emails ae ON ae.account_id = a.id
+      WHERE a.active = 1 AND (a.email = ? OR ae.email = ?) LIMIT 1`,
+    from,
+    from
+  );
   if (account) {
     const grants = await all<{ role_key: string }>(env.DB, "SELECT role_key FROM grants WHERE account_id = ?", account.id);
     return { actor_id: account.id, actor_email: null, actor_role: grants.length ? primaryRole(grants) : "resident" };
@@ -71,7 +94,7 @@ async function resolveSender(env: Env, from: string, now: string): Promise<Attri
     );
     if (s) {
       await run(env.DB, "UPDATE senders SET hit_count = hit_count + 1, last_seen = ? WHERE id = ?", now, s.id);
-      return { actor_id: null, actor_email: from, actor_role: s.kind ? roleForKind(s.kind) : null };
+      return { actor_id: null, actor_email: from, actor_role: s.kind ? roleForKind(s.kind) : defaultRole(from) };
     }
   }
 
@@ -86,7 +109,7 @@ async function resolveSender(env: Env, from: string, now: string): Promise<Attri
     now,
     now
   );
-  return { actor_id: null, actor_email: from, actor_role: null };
+  return { actor_id: null, actor_email: from, actor_role: defaultRole(from) };
 }
 
 async function summarise(env: Env, subject: string, body: string): Promise<string | null> {
@@ -101,12 +124,17 @@ async function summarise(env: Env, subject: string, body: string): Promise<strin
   }
 }
 
-// Consume one queued inbound email: fetch its raw body from R2, resolve the
-// sender, summarise (unless opted out), and append the comment event (UJ-03/04/16).
+// Consume one queued inbound email: parse the raw message from R2, resolve the
+// sender, summarise (unless opted out), then write the comment, its attachments
+// and any enquiry marker in one batch (UJ-03/04/16, D28). The raw message stays
+// in R2 as the comment's "original"; its row makes a queue retry a no-op.
 export async function processInbound(env: Env, msg: InboundEmail): Promise<void> {
+  if (await one(env.DB, "SELECT 1 FROM attachments WHERE r2_key = ?", msg.rawKey)) return; // already done
+
   const obj = await env.RAW.get(msg.rawKey);
-  const raw = obj ? await obj.text() : "";
-  const bodyText = extractText(raw);
+  const raw = obj ? await obj.arrayBuffer() : new ArrayBuffer(0);
+  const email = await PostalMime.parse(raw);
+  const bodyText = bodyOf(email);
 
   const now = new Date().toISOString();
   // Producer lowercases already; normalise again defensively (emails are
@@ -115,37 +143,52 @@ export async function processInbound(env: Env, msg: InboundEmail): Promise<void>
   const noAi = /no ai/i.test(msg.subject); // UJ-16 opt-out
   const aiSummary = noAi ? null : await summarise(env, msg.subject, bodyText);
 
-  await run(
-    env.DB,
-    `INSERT INTO events
-       (subject_type, subject_id, at, actor_id, actor_email, actor_role, type, body, source, ai_processed, ai_summary)
-     VALUES ('ticket', ?, ?, ?, ?, ?, 'comment', ?, 'email', ?, ?)`,
-    msg.ticketId,
-    now,
-    actor_id,
-    actor_email,
-    actor_role,
-    bodyText,
-    noAi ? 0 : 1,
-    aiSummary
+  // Files first, under keys derived from the raw key so a retry overwrites them.
+  const rawId = msg.rawKey.slice(msg.rawKey.lastIndexOf("/") + 1);
+  const files = await Promise.all(
+    email.attachments.map(async (att, i) => {
+      const r2Key = `attachments/${msg.ticketId}/${rawId}/${i}-${safeName(att.filename)}`;
+      const content = typeof att.content === "string" ? new TextEncoder().encode(att.content) : att.content;
+      await env.RAW.put(r2Key, content, { httpMetadata: { contentType: att.mimeType } });
+      return { r2Key, filename: att.filename ?? safeName(null), type: att.mimeType, size: content.byteLength };
+    })
   );
 
   // An agent emailing a contractor with the ticket in CC is the enquiry (D21).
+  let enquiry = false;
   if (actor_role === "agent") {
-    for (const to of recipients(raw)) {
-      if (!(await isContractor(env, to))) continue;
-      await run(
-        env.DB,
-        `INSERT INTO events (subject_type, subject_id, at, actor_id, actor_email, actor_role, type, to_value, source)
-         VALUES ('ticket', ?, ?, ?, ?, 'agent', 'marker', 'enquiry_sent', 'email')`,
-        msg.ticketId,
-        now,
-        actor_id,
-        actor_email
-      );
-      break;
+    for (const to of recipients([...(email.to ?? []), ...(email.cc ?? [])])) {
+      if (await isContractor(env, to)) {
+        enquiry = true;
+        break;
+      }
     }
   }
 
-  await env.RAW.delete(msg.rawKey); // processed → drop the raw copy
+  const eventOf = `(SELECT event_id FROM attachments WHERE r2_key = ?)`;
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO events
+         (subject_type, subject_id, at, actor_id, actor_email, actor_role, type, body, source, ai_processed, ai_summary)
+       VALUES ('ticket', ?, ?, ?, ?, ?, 'comment', ?, 'email', ?, ?)`
+    ).bind(msg.ticketId, now, actor_id, actor_email, actor_role, bodyText, noAi ? 0 : 1, aiSummary),
+    env.DB.prepare(
+      `INSERT INTO attachments (event_id, kind, filename, content_type, size, r2_key)
+       VALUES (last_insert_rowid(), 'original', 'original.eml', 'message/rfc822', ?, ?)`
+    ).bind(raw.byteLength, msg.rawKey),
+    ...files.map((f) =>
+      env.DB.prepare(
+        `INSERT INTO attachments (event_id, kind, filename, content_type, size, r2_key)
+         VALUES (${eventOf}, 'file', ?, ?, ?, ?)`
+      ).bind(msg.rawKey, f.filename, f.type, f.size, f.r2Key)
+    ),
+    ...(enquiry
+      ? [
+          env.DB.prepare(
+            `INSERT INTO events (subject_type, subject_id, at, actor_id, actor_email, actor_role, type, to_value, source)
+             VALUES ('ticket', ?, ?, ?, ?, 'agent', 'marker', 'enquiry_sent', 'email')`
+          ).bind(msg.ticketId, now, actor_id, actor_email),
+        ]
+      : []),
+  ]);
 }

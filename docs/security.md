@@ -55,9 +55,23 @@ grants. Accounts are identity-only; all access flows through grants.
 ## Transport & secrets
 
 - HTTPS only (Cloudflare edge). `Secure` cookies assume TLS.
-- Secrets via `wrangler secret` (e.g. `MAILERSEND_API_KEY`), never in
-  `wrangler.jsonc` `vars` or the repo.
-- Email deliverability requires **SPF + DKIM + DMARC** on `lansburysquare.co.uk`.
+- Secrets via `wrangler secret`, never in `wrangler.jsonc` `vars` or the repo:
+  - `MAILERSEND_API_KEY`: a send-only MailerSend token.
+  - `CF_EMAIL_TOKEN`: an account-owned Cloudflare API token. The server only
+    needs Account › Email Routing Addresses:Edit (to register alias
+    destinations). The token also has Zone › Email Routing Rules:Edit for
+    `lansburysquare.co.uk`, which the app doesn't use and which can be dropped.
+- Email attachments are untrusted files served from our origin (D28). They are
+  always sent with `X-Content-Type-Options: nosniff` and
+  `Content-Security-Policy: sandbox`, and only PNG/JPEG/GIF/WebP/PDF render
+  inline. Everything else, including HTML, SVG and the original `.eml`,
+  downloads as `application/octet-stream`. Access is gated by the ticket's
+  `ticket:read` scope.
+- SPF, DKIM and DMARC are live on `lansburysquare.co.uk`. Records are in
+  `architecture.md` → *Domain & mail DNS*.
+- Main-domain forward addresses can be changed by board/admin only
+  (`mail:manage`). The agent can't re-point `board@` (D26). Changes are audited
+  on `events`.
 
 ## Audit
 

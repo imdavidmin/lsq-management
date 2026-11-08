@@ -99,6 +99,15 @@ export async function reminderPass(env: Env, now: Date): Promise<{ due: number }
   return { due: due.length };
 }
 
+// D27: purge login codes that are expired or used, and sessions past either
+// expiry. Neither is audit data; both are dead once expired.
+export async function cleanupPass(env: Env, now: Date): Promise<{ otps: number; sessions: number }> {
+  const nowIso = now.toISOString();
+  const otps = await run(env.DB, "DELETE FROM otp_codes WHERE expires_at < ? OR consumed_at IS NOT NULL", nowIso);
+  const sessions = await run(env.DB, "DELETE FROM sessions WHERE expires_at < ? OR hard_expires_at < ?", nowIso, nowIso);
+  return { otps: otps.meta.changes ?? 0, sessions: sessions.meta.changes ?? 0 };
+}
+
 // The day-of-month the monthly report fires, clamped to the month's last day
 // (REPORT_DAY_OF_MONTH may exceed a short month — see architecture.md).
 function reportDay(env: Env, now: Date): number {
@@ -111,10 +120,12 @@ export function isReportDay(env: Env, now: Date): boolean {
   return now.getUTCDate() === reportDay(env, now);
 }
 
-// Daily entry (UJ-11/12, D24): chase and SLA reminders always; monthly report on the configured day.
+// Daily entry (UJ-11/12, D24, D27): chase, SLA reminders and auth cleanup always;
+// monthly report on the configured day.
 export async function runScheduled(env: Env, now: Date): Promise<void> {
   await reminderPass(env, now);
   await chasePass(env, now);
+  await cleanupPass(env, now);
   if (isReportDay(env, now)) {
     // TODO(phase 4): const report = await monthlyReport(env, prevMonth(now));
     //                await sendMail(env, { to: env.BOARD_EMAIL, ...report });

@@ -10,7 +10,7 @@ Authoritative spec. The scoring rubric here is the source of truth for the
 - Create tickets via **web UI only** (residents, site staff, admins, board).
   No ticket creation by email — this avoids unknown-sender / spam tickets.
 - Update existing tickets via web UI **or** email: reply/CC to
-  `<ticket_id>@lansburysquare.co.uk`. The address _is_ the ticket number; no
+  `<ticket_id>@ticket.lansburysquare.co.uk`. The address _is_ the ticket number; no
   subject parsing needed.
 - Every update is an immutable event (audit spine). Nothing is destructive.
 - Ticket classification (category/scope) drives scoring; see below.
@@ -107,7 +107,7 @@ ending in a completed state.
    default to their own).
 3. Optionally picks a **category** (UJ-05). Submits. System creates the ticket,
    assigns an id, and shows the ticket page with its email address
-   `<id>@lansburysquare.co.uk`.
+   `<id>@ticket.lansburysquare.co.uk`.
 4. Done: ticket is `open`, visible to the creator and everyone in scope.
 
 **UJ-02 — Update a ticket (web UI)**
@@ -120,7 +120,7 @@ ending in a completed state.
 **UJ-03 — Update a ticket by email (CC)**
 
 1. A staff member, contractor, or resident replies/CCs
-   `<id>@lansburysquare.co.uk`.
+   `<id>@ticket.lansburysquare.co.uk`.
 2. Email Routing → Worker parses the local part to the ticket id (rejects if no
    such ticket — email cannot create tickets).
 3. Worker resolves the From address (UJ-04) to attribute the update, runs AI

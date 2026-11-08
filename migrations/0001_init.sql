@@ -15,11 +15,13 @@ CREATE TABLE units (
 );
 
 -- Identity only; role/scope/residence/board are grants.
+-- Erasure (D30) keeps the row as a tombstone: email NULL, name = anonymous label.
 CREATE TABLE accounts (
-  id      INTEGER PRIMARY KEY,
-  email   TEXT UNIQUE NOT NULL,
-  name    TEXT NOT NULL,
-  active  INTEGER NOT NULL DEFAULT 1
+  id         INTEGER PRIMARY KEY,
+  email      TEXT UNIQUE,                 -- NULL only once erased
+  name       TEXT NOT NULL,
+  active     INTEGER NOT NULL DEFAULT 1,
+  erased_at  TEXT
 );
 
 -- Roles as data.
@@ -54,6 +56,16 @@ CREATE TABLE organizations (
   kind  TEXT NOT NULL CHECK (kind IN ('agent','contractor'))
 );
 
+-- Extra addresses an account sends from (D29). Inbound attribution only: login
+-- and notifications use accounts.email. An address is in at most one of the two.
+CREATE TABLE account_emails (
+  email      TEXT PRIMARY KEY,
+  account_id INTEGER NOT NULL REFERENCES accounts(id),
+  added_at   TEXT NOT NULL,
+  added_by   INTEGER REFERENCES accounts(id)
+);
+CREATE INDEX idx_account_emails_account ON account_emails(account_id);
+
 -- Inbound sender mapping + unknown-sender log; org_id NULL = unknown.
 CREATE TABLE senders (
   id          INTEGER PRIMARY KEY,
@@ -66,6 +78,7 @@ CREATE TABLE senders (
   first_seen  TEXT NOT NULL,
   last_seen   TEXT NOT NULL
 );
+
 
 ----------------------------------------------------------------------- auth ---
 
@@ -95,7 +108,7 @@ CREATE INDEX idx_sessions_account ON sessions(account_id);
 
 -------------------------------------------------------------------- tickets ---
 
--- Ticket id IS the email address <id>@lansburysquare.co.uk.
+-- Ticket id IS the email address <id>@ticket.lansburysquare.co.uk (D25).
 CREATE TABLE tickets (
   id            INTEGER PRIMARY KEY,
   title         TEXT NOT NULL,
@@ -141,6 +154,20 @@ CREATE INDEX idx_events_subject ON events(subject_type, subject_id, at);
 
 -- Key/value site config, admin-editable. `site_info` holds the estate
 -- contact-details markdown; `service_year_start` (MM-DD) drives scoring (D21).
+-- Files on an email comment (D28): its attachments, plus the raw message as
+-- kind 'original'. Bytes live in R2 (lsq-inbound-raw); r2_key is unique, which
+-- also makes inbound processing idempotent.
+CREATE TABLE attachments (
+  id           INTEGER PRIMARY KEY,
+  event_id     INTEGER NOT NULL REFERENCES events(id),
+  kind         TEXT NOT NULL CHECK (kind IN ('file','original')),
+  filename     TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  size         INTEGER NOT NULL,
+  r2_key       TEXT UNIQUE NOT NULL
+);
+CREATE INDEX idx_attachments_event ON attachments(event_id);
+
 CREATE TABLE config (
   key        TEXT PRIMARY KEY,
   value      TEXT NOT NULL,                    -- markdown

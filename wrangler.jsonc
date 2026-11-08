@@ -12,11 +12,17 @@
     "not_found_handling": "single-page-application"
   },
   "vars": {
-    // Inbound ticket address domain: <ticketId>@EMAIL_DOMAIN
-    "EMAIL_DOMAIN": "lansburysquare.co.uk",
-    // Notifications/OTP sender; board mailbox for reports/chases.
+    // Inbound ticket address domain: <ticketId>@TICKET_EMAIL_DOMAIN (D25)
+    "TICKET_EMAIL_DOMAIN": "ticket.lansburysquare.co.uk",
+    // Notifications/OTP sender (MailerSend); board mailbox for reports/chases.
     "MAIL_FROM": "ops@lansburysquare.co.uk",
+    "MAIL_FROM_NAME": "Lansbury Square",
     "BOARD_EMAIL": "board@lansburysquare.co.uk",
+    // Main domain for board-provisioned forward aliases (D26), and the CF ids
+    // the alias endpoint calls Email Routing with (token: secret CF_EMAIL_TOKEN).
+    "MAIL_DOMAIN": "lansburysquare.co.uk",
+    "CF_ACCOUNT_ID": "f453e6f1c34f3584556b0ad876e3048e",
+    "CF_ZONE_ID": "3f4b1555020a108e8260f04017349ba8",
     // Day of month the monthly board report fires (tracks the meeting schedule,
     // not month-end). Clamped to the last day in shorter months.
     "REPORT_DAY_OF_MONTH": "20"
@@ -31,7 +37,10 @@
   ],
   // Year-end score snapshots (D21): the official figures once a service year ends.
   "r2_buckets": [
-    { "binding": "SNAPSHOTS", "bucket_name": "lsq-score-snapshots" }
+    { "binding": "SNAPSHOTS", "bucket_name": "lsq-score-snapshots" },
+    // Inbound mail originals + attachments, written by the ai Worker; the
+    // server only reads them to serve ticket attachments (D28).
+    { "binding": "MAIL", "bucket_name": "lsq-inbound-raw" }
   ],
   // No Workers AI binding here: this Worker does no AI. Ticket categories are
   // chosen by the creator (or left for an agent); the only AI use is inbound
@@ -59,7 +68,9 @@
     // Daily 02:00 UTC: chase pass + monthly board report on REPORT_DAY_OF_MONTH.
     "crons": ["0 2 * * *"]
   }
-  // Secret (set via `wrangler secret put MAILERSEND_API_KEY`): MAILERSEND_API_KEY
+  // Secrets (`wrangler secret put <NAME>`): MAILERSEND_API_KEY (outbound mail),
+  // CF_EMAIL_TOKEN (registers alias destinations, D26). See architecture.md →
+  // "Domain & mail DNS".
   // Inbound email is NOT handled here — it routes to the separate `lsq-email`
   // Worker (see /email/wrangler.jsonc), which queues to `lsq-ai` for processing.
 }

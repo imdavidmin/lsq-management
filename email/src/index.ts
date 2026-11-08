@@ -1,20 +1,37 @@
 import type { InboundEmail } from "../../common/queue";
 
 export interface Env {
-  DB: D1Database; // read-only: reject mail for unknown ticket ids at the door
+  DB: D1Database; // read-only: ticket ids + the mail_aliases config row
   INBOUND: Queue<InboundEmail>;
   RAW: R2Bucket;
+  TICKET_EMAIL_DOMAIN: string;
+  MAIL_DOMAIN: string;
 }
 
-// Deliberately tiny: email() handlers run under a tight budget, so this only
-// validates the ticket address, stashes the raw message in R2, and enqueues its
-// key. All resolution/AI/DB-writes happen off the critical path in the ai Worker.
+// <name>@MAIL_DOMAIN → a copy to each of the alias's destinations (D26). CF
+// Email Routing rules allow one destination, so copies are fanned out here.
+async function forwardAlias(message: ForwardableEmailMessage, env: Env, localPart: string): Promise<void> {
+  const row = await env.DB.prepare("SELECT value FROM config WHERE key = 'mail_aliases'").first<{ value: string }>();
+  const aliases: Record<string, string[]> = row ? JSON.parse(row.value) : {};
+  const forwardTo = aliases[localPart.toLowerCase()];
+  if (!forwardTo?.length) return message.setReject("no such address");
+  const results = await Promise.allSettled(forwardTo.map((to) => message.forward(to)));
+  // An unverified destination fails alone; bounce only if nobody got a copy.
+  for (const r of results) if (r.status === "rejected") console.error(`[alias] ${localPart}: ${r.reason}`);
+  if (!results.some((r) => r.status === "fulfilled")) message.setReject("delivery failed");
+}
+
+// Deliberately tiny: email() handlers run under a tight budget. Main-domain
+// aliases are forwarded; ticket mail is validated, stashed in R2 and its key
+// enqueued. All resolution/AI/DB-writes happen off the critical path in the ai Worker.
 export default {
   async email(message: ForwardableEmailMessage, env: Env): Promise<void> {
-    const at = message.to.indexOf("@");
-    const localPart = (at >= 0 ? message.to.slice(0, at) : message.to).trim();
+    const at = message.to.lastIndexOf("@");
+    const localPart = message.to.slice(0, at).trim();
+    const domain = message.to.slice(at + 1).trim().toLowerCase();
+    if (domain === env.MAIL_DOMAIN) return forwardAlias(message, env, localPart);
     const ticketId = Number(localPart);
-    if (!Number.isInteger(ticketId) || ticketId <= 0)
+    if (domain !== env.TICKET_EMAIL_DOMAIN || !Number.isInteger(ticketId) || ticketId <= 0)
       return message.setReject("unrecognised ticket address");
 
     const exists = await env.DB.prepare("SELECT 1 FROM tickets WHERE id = ?").bind(ticketId).first();

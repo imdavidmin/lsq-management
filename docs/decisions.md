@@ -16,7 +16,8 @@ for scoring. Needs are simple; board-maintained + free to run wins.
 
 ### D3 — Ticket creation is UI-only; email is update-only
 
-Email replies go to `<id>@lansburysquare.co.uk` and only update that ticket.
+Email replies go to `<id>@ticket.lansburysquare.co.uk` (subdomain since D25) and
+only update that ticket.
 **Why:** removes the unknown-sender-creates-ticket / spam problem entirely. The
 address is the ticket number, so no subject parsing.
 
@@ -58,6 +59,10 @@ Fee = `Σ (weight × result)`.
 All updates/classifications/clock-stamps/overrides are immutable rows. **Why:**
 makes "board can dispute anything later" free and tamper-evident, with no
 destructive edits.
+
+**Sole exception (D30):** erasing a person rewrites `actor_email` on their
+events to point at their tombstone account. Identity columns only; no event is
+deleted and no body is changed.
 
 ### D8 — Don't defend against clock/metric gaming in software
 
@@ -106,6 +111,8 @@ single daily Cron Trigger runs the chase pass and the monthly report.
 Durable-Object per-ticket alarms were considered for exact timing but rejected.
 **Why:** a daily sweep is the laziest thing that meets the auto-chase goal;
 per-ticket alarms add moving parts for no practical gain at this scale.
+The same daily run also sends SLA reminders (D24) and purges dead login codes
+and sessions (D27).
 
 ### D15 — Monthly report: one function, cron + on-demand
 
@@ -246,3 +253,165 @@ system-written marker) plus a 1-day window. A chase logged before day 5 by any
 means other than email didn't count. One SLA in the existing vocabulary is
 simpler, needs no evaluator change, and keeps derived state out of the audit
 spine (D13, D21). The reminder covers every SLA, not just this one.
+
+### D25 — Ticket mail lives on the `ticket.` subdomain
+
+Ticket addresses are `<id>@ticket.lansburysquare.co.uk` (`TICKET_EMAIL_DOMAIN`).
+The `email` Worker rejects anything whose domain isn't exactly that, so a
+numeric address on the main domain doesn't thread. The server returns each
+ticket's address as `reply_to`, so the UI never hard-codes the domain.
+**Why:** with tickets on the main domain, every `@lansburysquare.co.uk` address
+was a ticket address, which left no room for human ones (`board@`, `ops@`,
+`dmarc@`). A subdomain splits the two namespaces with no extra parsing. The
+check is still a string comparison on the recipient (D3, D9). Email Routing is
+enabled on the subdomain and the zone catch-all covers it. DNS is in
+`architecture.md` → *Domain & mail DNS*.
+
+### D26 — Main-domain addresses are board-provisioned aliases
+
+`<name>@lansburysquare.co.uk` addresses (`board@`, `admin@`, …) live in one JSON
+document in the `config` table, key `mail_aliases`:
+`{ "board": ["a@x.com", "b@y.com"], … }`.
+- **Delivery:** the zone catch-all sends main-domain mail to the `email` Worker.
+  It reads the document and forwards a copy to every destination of the matching
+  name. Unknown names are rejected, and a failed destination doesn't block the
+  others.
+- **Management:** board and admin manage aliases in the app
+  (`PUT`/`DELETE /api/mail-aliases/{local_part}`, `mail:manage`). The agent can
+  only list them (`mail:read`). Every change appends a `config` event
+  (subject type `mail_alias`, body = the name).
+- **Verification:** the server registers new destinations with Cloudflare
+  (`CF_EMAIL_TOKEN`), which emails each a verification link. The Worker can only
+  forward to verified addresses.
+- **Validation:** all-digit names and destinations on our own domains are
+  rejected.
+- **Changes go through the app.** Editing the row directly in D1 skips the
+  audit event and destination registration, so don't.
+
+**Why:**
+- **Copies:** `board@` should reach every board member. A Cloudflare forward
+  rule allows exactly one destination ("forward action must contain exactly one
+  destination"), but a Worker can call `forward()` once per destination.
+- **One `config` row, not a table or KV:** there are a handful of aliases, read
+  as a whole on every inbound email, and only the `email` Worker uses them, so
+  they don't belong in the relational model. A JSON row in the existing
+  key/value `config` table (like `site_info`) keeps D1 the only store, is
+  consistent immediately, and records `updated_by`. KV was tried and dropped:
+  it added a second storage product and up-to-a-minute staleness, and its
+  "edit the JSON by hand" appeal would skip the audit trail.
+- **No Cloudflare rules:** routing in the Worker means no per-alias Cloudflare
+  rules to keep in sync. The cost is that forwarding depends on the `email`
+  Worker, as ticket mail already does.
+- **Board-only edits:** `board@` receives the reports and chase digests the
+  agent is scored on, so letting the agent re-point it would undo the point of
+  the system. That's a permission, not a role check (D18).
+- **No hosted mailboxes:** forwarding is free, and nobody runs a mail server.
+
+### D27 — The daily cron purges dead login codes and sessions
+
+`cleanupPass` deletes `otp_codes` rows that are expired or consumed, and
+`sessions` past their sliding (`expires_at`) or hard (`hard_expires_at`) expiry.
+It runs in the existing daily Cron Trigger (D14), alongside the chase pass and
+SLA reminders.
+**Why:** nothing removed these rows, so both tables grew forever. Expired codes
+and sessions are already rejected on read, so deleting them changes no
+behaviour. They aren't audit data; `events` and `access_log` keep their own
+retention rules (`gdpr.md`). This was preferred to moving codes or sessions to
+KV for its automatic expiry, for three reasons:
+- KV has no atomic increment, so the attempt cap wouldn't hold.
+- A KV delete takes up to a minute to reach every location, so a used code or
+  a logged-out session would keep working briefly.
+- The sliding session expiry would use up KV's free-tier write budget.
+
+### D28 — Inbound mail is parsed; originals and attachments are kept
+
+The `ai` Worker parses each message with `postal-mime` (pinned exact) and
+stores the plain-text part as the comment body. If there's no text part, it
+uses the HTML part converted to text. The raw message is no longer deleted
+from R2: it's recorded as the comment's `original` attachment.
+- **Attachments:** each one is written to R2 and listed in `attachments`.
+- **Atomic write:** the comment, its attachment rows and any enquiry marker go
+  in one D1 batch. A queue retry finds the `original` row and does nothing.
+- **Serving:** the server serves files under the ticket's `ticket:read` scope
+  with `nosniff` and `CSP: sandbox`. Only images and PDFs show inline.
+- **UI:** quoted reply history collapses, but the stored body keeps it.
+- **Supersedes** the "naive MIME" note in the old `extractText`.
+- **Erasure (D30):** the originals a person sent are deleted when they are.
+
+**Why:**
+- **Readability:** real mail is multipart, and the old cut at the first blank
+  line stored MIME boundaries and base64 as the comment.
+- **Keeping the original:** the raw message is the evidence behind an emailed
+  update, and the board may need it in a dispute (D7).
+- **Pinned 2.x line:** the newer 4.x line had about a dozen releases in the
+  month before adoption. Mail from strangers goes through this parser, so
+  maturity matters more than features.
+- **Sandboxing:** files from strangers served from our origin are a stored-XSS
+  risk unless they're sandboxed and downloaded.
+
+### D29 — Extra addresses per person; unknown senders get a default role
+
+`account_emails` lists extra addresses a person sends from. Inbound attribution
+matches `accounts.email`, then `account_emails`, then sender rules. Login codes
+and notifications only ever use `accounts.email` (D17).
+- **Uniqueness:** an address belongs to at most one account, primary or extra.
+- **Managing addresses:** board/admin add or remove them on the account
+  (`account:manage`).
+- **Linking unknown senders:** anyone with `sender:manage`, the agent
+  included, can link an unknown email sender to a person. That moves the
+  address onto the account and removes the sender row.
+- **Default role:** an unknown sender, or a sender rule with no organization,
+  gets a role by domain. A personal mail domain (`common/senders.ts`: gmail,
+  hotmail, icloud, …) means `resident`; anything else means `contractor`.
+  Before this, the role was `null`, which counted for no SLA.
+- **Display names:** the timeline resolves a display name at read time, by
+  `actor_id` or by `actor_email` through the account's addresses. The stored
+  `actor_role` is never re-derived.
+
+**Why:**
+- **Second addresses:** residents write from more than one address, and an
+  account was one address.
+- **Default role:** it makes the common case right without anyone linking
+  anything. A resident on gmail counts as a resident, and a firm on its own
+  domain counts as a contractor, so linking an address later rarely changes
+  SLA outcomes.
+- **Names, not roles, at read time:** re-deriving roles would rewrite history
+  and shift past SLA results. Names are display-only, so resolving them at read
+  time keeps the audit trail intact (D7, D21).
+- **No login from extra addresses:** that keeps one login identity per person.
+- **Agent linking:** the agent already triages unknown senders, and D8 covers
+  the residual gaming risk.
+
+### D30 — Deleting a person tombstones the account; the ticket record stays
+
+Moving out and deleting an account are one manual board action
+(`DELETE /accounts/{id}`, `account:manage`). The `accounts` row is kept as an
+anonymous tombstone rather than removed:
+- **Label:** `name` becomes `Resident of Flat 12, Banbury Point` (from their unit
+  grants; several units joined by `; `). With no unit, it's the role name,
+  plus the organization when org-scoped (`Managing Agent`, `Contractor, Acme Ltd`).
+- **Removed:** email (set NULL), grants, sessions, login codes, extra addresses
+  (D29). `active = 0`, `erased_at` is set. Tombstones are hidden from the
+  directory and can't be revived or granted access.
+- **Scrubbed:** events whose raw `actor_email` is one of their addresses get
+  `actor_id` = the tombstone and `actor_email` = NULL (the one D7 exception).
+  Their raw `original` emails are deleted from R2 along with the attachment rows.
+- **Kept:** event bodies and AI summaries, ticket titles, file attachments,
+  `tickets.created_by`, survey ballots, metric entries and `access_log`, all
+  still pointing at the tombstone.
+- **Audit:** an `erase` event (subject `account`) records who erased whom,
+  holding only the label.
+
+**Why:**
+- **Tombstone over delete:** a dozen tables reference `accounts.id` and events are
+  append-only. A tombstone keeps every reference valid, and every place that
+  shows a name shows the label with no extra code.
+- **Household label:** the estate needs to know which flat raised or chased
+  a ticket for the scoring record. It doesn't need to know who.
+- **Scrub identifiers, keep content:** raw addresses and `.eml` files identify
+  the person directly and add nothing to the record. Free text is the record
+  itself; redacting it would gut the history. Residual names in free text are
+  covered by legitimate interest and handled by manual redaction on request
+  (docs/gdpr.md).
+- **Manual, not on a retention timer:** move-outs are infrequent, and the
+  board knows when they happen.

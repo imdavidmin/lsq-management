@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { chasePass, isReportDay, reminderPass, runScheduled } from "../src/scheduler/cron";
+import { chasePass, cleanupPass, isReportDay, reminderPass, runScheduled } from "../src/scheduler/cron";
+import { seedAccount } from "./helpers";
 import { workingDaysBetween } from "../src/lib/workdays";
 
 // Seed a ticket + its latest event at a given time.
@@ -93,3 +94,33 @@ describe("scheduler — SLA reminders (D24)", () => {
     expect(await count()).toBe(before);
   });
 });
+
+describe("cleanupPass (D27)", () => {
+  it("deletes expired/used login codes and expired sessions, keeps live ones", async () => {
+    const id = await seedAccount("cleanup@lsq.test");
+    const now = new Date("2026-11-09T02:00:00Z");
+    const past = "2026-11-08T00:00:00.000Z";
+    const future = "2026-11-10T00:00:00.000Z";
+    const otp = (code: string, expires: string, consumed: string | null) =>
+      env.DB.prepare(
+        "INSERT INTO otp_codes (account_id, code_hash, expires_at, consumed_at, created_at) VALUES (?, ?, ?, ?, ?)"
+      ).bind(id, code, expires, consumed, past).run();
+    await otp("expired", past, null);
+    await otp("used", future, past);
+    await otp("live", future, null);
+    const session = (token: string, expires: string, hard: string) =>
+      env.DB.prepare(
+        "INSERT INTO sessions (account_id, token_hash, created_at, last_used_at, expires_at, hard_expires_at) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(id, token, past, past, expires, hard).run();
+    await session("idle", past, future);
+    await session("capped", future, past);
+    await session("live", future, future);
+
+    expect(await cleanupPass(env, now)).toEqual({ otps: 2, sessions: 2 });
+    const left = async (table: string, col: string) =>
+      (await env.DB.prepare(`SELECT ${col} AS v FROM ${table} WHERE account_id = ?`).bind(id).all()).results.map((r: any) => r.v);
+    expect(await left("otp_codes", "code_hash")).toEqual(["live"]);
+    expect(await left("sessions", "token_hash")).toEqual(["live"]);
+  });
+});
+

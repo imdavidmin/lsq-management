@@ -33,6 +33,7 @@ describe("tickets", () => {
     expect(t.created_by).toBe(id);
     expect(t.category).toBeNull(); // no category chosen → agent will categorise
     expect(t.needs_contractor).toBe(false); // serialized as boolean
+    expect(t.reply_to).toBe(`${t.id}@ticket.lansburysquare.co.uk`); // D25
 
     const detail = await (await req(`/api/tickets/${t.id}`, cookie)).json() as any;
     const types = detail.events.map((e: any) => e.type).sort();
@@ -171,4 +172,52 @@ describe("tickets", () => {
     const res2 = await login("res-m@lsq.test", "resident", "estate", null);
     expect((await post(`/api/tickets/${t.id}/markers`, res2.cookie, { marker: "attended", notes: "x" })).status).toBe(403);
   });
+
+  it("serves an email comment's attachments in scope, with sandboxing headers (D28/D29)", async () => {
+    const a = await login("res-att@lsq.test", "resident", "unit", 101);
+    const b = await login("res-att2@lsq.test", "resident", "unit", 201);
+    const t = (await (await post("/api/tickets", a.cookie, { title: "Leak", description: "x", unit_id: 101 })).json()) as any;
+    const other = (await (await post("/api/tickets", b.cookie, { title: "Other", description: "y", unit_id: 201 })).json()) as any;
+
+    // An email comment from an address later linked to resident A (shown by name, role kept).
+    await env.DB.prepare("INSERT INTO account_emails (email, account_id, added_at) VALUES ('alt@hotmail.com', ?, 'x')")
+      .bind(a.id)
+      .run();
+    const ev = await env.DB.prepare(
+      `INSERT INTO events (subject_type, subject_id, at, actor_email, actor_role, type, body, source)
+         VALUES ('ticket', ?, '2026-11-08T10:00:00Z', 'alt@hotmail.com', 'resident', 'comment', 'See photo', 'email') RETURNING id`
+    ).bind(t.id).first<{ id: number }>();
+    await env.MAIL.put("attachments/x/1-photo.png", "PNGDATA");
+    await env.MAIL.put("attachments/x/2-page.html", "<script>alert(1)</script>");
+    const att = async (filename: string, type: string, key: string) =>
+      (await env.DB.prepare(
+        "INSERT INTO attachments (event_id, kind, filename, content_type, size, r2_key) VALUES (?, 'file', ?, ?, 7, ?) RETURNING id"
+      ).bind(ev!.id, filename, type, key).first<{ id: number }>())!.id;
+    const png = await att("photo.png", "image/png", "attachments/x/1-photo.png");
+    const html = await att("page.html", "text/html", "attachments/x/2-page.html");
+
+    const detail = (await (await req(`/api/tickets/${t.id}`, a.cookie)).json()) as any;
+    const comment = detail.events.find((e: any) => e.id === ev!.id);
+    expect(comment.actor_name).toBe("res-att@lsq.test"); // via account_emails
+    expect(comment.actor_role).toBe("resident");
+    expect(comment.attachments.map((x: any) => x.filename)).toEqual(["photo.png", "page.html"]);
+
+    const img = await req(`/api/tickets/${t.id}/attachments/${png}`, a.cookie);
+    expect(img.status).toBe(200);
+    expect(await img.text()).toBe("PNGDATA");
+    expect(img.headers.get("content-type")).toBe("image/png");
+    expect(img.headers.get("content-disposition")).toMatch(/^inline/);
+    expect(img.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(img.headers.get("content-security-policy")).toBe("sandbox");
+
+    // HTML never renders on our origin.
+    const page = await req(`/api/tickets/${t.id}/attachments/${html}`, a.cookie);
+    expect(page.headers.get("content-type")).toBe("application/octet-stream");
+    expect(page.headers.get("content-disposition")).toMatch(/^attachment/);
+    await page.arrayBuffer(); // drain R2 bodies, or the pool's isolated storage fails
+
+    expect((await req(`/api/tickets/${t.id}/attachments/${png}`, b.cookie)).status).toBe(403); // out of scope
+    expect((await req(`/api/tickets/${other.id}/attachments/${png}`, b.cookie)).status).toBe(404); // wrong ticket
+  });
 });
+

@@ -20,7 +20,7 @@ export async function sendMail(env: Env, mail: Mail): Promise<void> {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: { email: env.MAIL_FROM },
+      from: { email: env.MAIL_FROM, name: env.MAIL_FROM_NAME },
       to: [{ email: mail.to }],
       subject: mail.subject,
       text: mail.text,

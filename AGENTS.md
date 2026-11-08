@@ -43,7 +43,7 @@ if the code needs to diverge, record why there first.
 Break one of these and you've broken the design, not just a test:
 
 1. **`events` is the append-only audit spine (D7, D19).** Never UPDATE/DELETE an
-   event. All state changes — comments, status, classification, clock stamps,
+   event (sole exception: the D30 erasure scrub of `actor_email`). All state changes — comments, status, classification, clock stamps,
    chases, board disputes — are new rows. Rows name their subject
    polymorphically (`subject_type`/`subject_id`: `ticket` today, `metric_value`
    next). No DB FK on `subject_id`; the app validates the referent.
@@ -54,14 +54,14 @@ Break one of these and you've broken the design, not just a test:
    `requirePermission(perm, scopeResolver)`; never add `is_board`-style columns
    or hard-code role checks.
 3. **Email threading is pure regex on the recipient address, never AI (D3, D9).**
-   `<ticketId>@EMAIL_DOMAIN` → ticket. Email only *updates* an existing ticket;
+   `<ticketId>@TICKET_EMAIL_DOMAIN` (`ticket.` subdomain, D25) → ticket. Email only *updates* an existing ticket;
    creation is UI-only. The `no ai` opt-out skips summarisation **only** — it
    must never affect threading or SLA timing.
 4. **Scoring is on-demand, never cached/nightly (D13).** Auto metrics are
    recomputed per dashboard/report request. Only manual/survey inputs and board
-   disputes get stored (`metric_values`, latest-row-wins). The one Cron does
-   exactly two things: daily chase pass + monthly report on
-   `REPORT_DAY_OF_MONTH` (D14/D15).
+   disputes get stored (`metric_values`, latest-row-wins). The one Cron runs
+   the daily chase + SLA-reminder pass, the auth cleanup (D27), and the monthly
+   report on `REPORT_DAY_OF_MONTH` (D14/D15/D24). Nothing else.
 5. **Don't build anti-gaming or speculative flexibility (D8).** No role
    inheritance, ABAC, per-field ACLs, DMARC flagging, Durable-Object alarms —
    all explicitly deferred in the docs. Add only when a real rule needs it, and

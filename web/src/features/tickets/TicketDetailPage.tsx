@@ -21,7 +21,7 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import { ArrowSyncRegular, CopyRegular, EditRegular } from "@fluentui/react-icons";
+import { ArrowSyncRegular, AttachRegular, CopyRegular, EditRegular, MailRegular } from "@fluentui/react-icons";
 import { Can } from "../../auth/Can";
 import { Query } from "../../lib/Query";
 import { Stamp } from "../../components/Stamp";
@@ -43,7 +43,11 @@ const useStyles = makeStyles({
   // A comment: header row shaded by actor role, body below.
   comment: { overflow: "hidden" },
   head: { display: "flex", gap: tokens.spacingHorizontalS, alignItems: "center", flexWrap: "wrap", padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalM}` },
-  body: { padding: tokens.spacingVerticalM },
+  body: { padding: tokens.spacingVerticalM, display: "flex", flexDirection: "column", gap: tokens.spacingVerticalS },
+  // Email bodies keep their line breaks.
+  text: { whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
+  quoted: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", color: tokens.colorNeutralForeground3, borderLeft: `2px solid ${tokens.colorNeutralStroke2}`, paddingLeft: tokens.spacingHorizontalS },
+  files: { display: "flex", flexWrap: "wrap", gap: tokens.spacingHorizontalS },
   author: { fontWeight: tokens.fontWeightSemibold },
   muted: { color: tokens.colorNeutralForeground3 },
   time: { marginLeft: "auto" },
@@ -54,9 +58,24 @@ const useStyles = makeStyles({
 });
 
 
+// Split an email body at its quoted reply history ("On … wrote:" or the first
+// run of "> " lines), so the new text shows and the history collapses (D28).
+function splitQuoted(body: string): [string, string] {
+  const lines = body.split("\n");
+  const at = lines.findIndex((l, i) => /^On .+wrote:\s*$/.test(l) || (l.startsWith(">") && !lines[i - 1]?.startsWith(">")));
+  return at > 0 ? [lines.slice(0, at).join("\n").trimEnd(), lines.slice(at).join("\n")] : [body, ""];
+}
+
+const fileSize = (n: number) => (n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 ** 2).toFixed(1)} MB`);
+
 function CommentCard({ e, name }: { e: Event; name: string }) {
   const s = useStyles();
   const c = roleColor(e.actor_role);
+  const [showQuoted, setShowQuoted] = useState(false);
+  const [text, quoted] = splitQuoted(e.body ?? "");
+  const url = (id: number) => `/api/tickets/${e.subject_id}/attachments/${id}`;
+  const files = e.attachments?.filter((a) => a.kind === "file") ?? [];
+  const original = e.attachments?.find((a) => a.kind === "original");
   return (
     <Card className={s.comment} appearance="outline">
       <div className={s.head} style={{ backgroundColor: c.bg, color: c.fg }}>
@@ -65,7 +84,29 @@ function CommentCard({ e, name }: { e: Event; name: string }) {
         <span className={s.time}><Stamp at={e.at} /></span>
       </div>
       <div className={s.body}>
-        <Text>{e.body}</Text>
+        <Text className={s.text}>{text}</Text>
+        {quoted && (
+          <>
+            <Button appearance="transparent" size="small" style={{ alignSelf: "flex-start" }} onClick={() => setShowQuoted(!showQuoted)}>
+              {showQuoted ? "Hide quoted text" : "Show quoted text"}
+            </Button>
+            {showQuoted && <Text className={s.quoted}>{quoted}</Text>}
+          </>
+        )}
+        {(files.length > 0 || original) && (
+          <div className={s.files}>
+            {files.map((a) => (
+              <Button key={a.id} as="a" href={url(a.id)} target="_blank" rel="noopener" size="small" icon={<AttachRegular />}>
+                {a.filename} ({fileSize(a.size)})
+              </Button>
+            ))}
+            {original && (
+              <Button as="a" href={url(original.id)} appearance="subtle" size="small" icon={<MailRegular />}>
+                View original email
+              </Button>
+            )}
+          </div>
+        )}
         {e.ai_summary && <Text italic size={200} className={s.muted} block>AI: {e.ai_summary}</Text>}
       </div>
     </Card>
@@ -208,11 +249,10 @@ export function TicketDetailPage() {
   const accounts = useAccounts();
   const [comment, setComment] = useState("");
 
-  const email = `${id}@lansburysquare.co.uk`;
-  // Events carry actor_id (actor_email is always null server-side); resolve to a
-  // real name, falling back to role, then "system" for unattributed events.
-  const nameOf = (id: number | null | undefined, role?: string | null): string =>
-    accounts.data?.find((a) => a.id === id)?.name ?? role ?? "system";
+  // Server-resolved name (incl. linked extra addresses, D29), else the account by
+  // id, else the raw sender address; only system-written events have none.
+  const nameOf = (e: Event): string =>
+    e.actor_name ?? accounts.data?.find((a) => a.id === e.actor_id)?.name ?? e.actor_email ?? "system";
 
   return (
     <div>
@@ -222,10 +262,10 @@ export function TicketDetailPage() {
           <>
             <Title1 block>#{t.id} · {t.title}</Title1>
             <div className={s.subtitle}>
-              <Text size={200}>Reply by email: {email}</Text>
+              <Text size={200}>Reply by email: {t.reply_to}</Text>
               <Tooltip content="Copy email address" relationship="label">
                 <Button appearance="transparent" size="small" icon={<CopyRegular />}
-                  onClick={() => void navigator.clipboard.writeText(email)} />
+                  onClick={() => void navigator.clipboard.writeText(t.reply_to ?? "")} />
               </Tooltip>
             </div>
 
@@ -234,8 +274,8 @@ export function TicketDetailPage() {
                 <Title3>Timeline</Title3>
                 {t.events?.map((e) =>
                   e.type === "comment"
-                    ? <CommentCard key={e.id} e={e} name={nameOf(e.actor_id, e.actor_role)} />
-                    : <EventLine key={e.id} e={e} name={nameOf(e.actor_id, e.actor_role)} />,
+                    ? <CommentCard key={e.id} e={e} name={nameOf(e)} />
+                    : <EventLine key={e.id} e={e} name={nameOf(e)} />,
                 )}
 
                 <Can perm="ticket:comment">

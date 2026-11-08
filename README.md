@@ -26,7 +26,7 @@ email is a separate `email` → queue → `ai` pipeline (D20).
 
 ```
   Residents / Staff / Board          Contractors & staff (email)
-        │  (web UI)                          │  reply to <ticket#>@lansburysquare.co.uk
+        │  (web UI)                          │  reply to <ticket#>@ticket.lansburysquare.co.uk
         ▼                                    ▼
   ┌──────────────┐                  ┌──────────────────────┐
   │  Web app     │                  │ Email Routing        │
@@ -110,6 +110,10 @@ root (gitignored):
 ```
 DEV_LOGIN_EMAIL=alice@lansburysquare.co.uk
 ```
+
+`.dev.vars` also shadows `.env`. `.env` holds the live `MAILERSEND_API_KEY`,
+so without a `.dev.vars`, `wrangler dev` would send real mail instead of
+logging OTPs to the console.
 
 Restart `npm run be`; every request is signed in as that email. The account is
 created if missing and always gets a board/estate grant, so it sees everything

@@ -11,6 +11,7 @@ export type Unit = S["Unit"];
 export type Organization = S["Organization"];
 export type OrganizationCreate = S["OrganizationCreate"];
 export type Sender = S["Sender"];
+export type MailAlias = S["MailAlias"];
 export type Role = S["Role"];
 export type Grant = S["Grant"];
 export type GrantCreate = S["GrantCreate"];
@@ -25,6 +26,7 @@ export type Ticket = S["Ticket"];
 export type TicketCreate = S["TicketCreate"];
 export type TicketStatus = S["TicketStatus"];
 export type Event = S["Event"];
+export type Attachment = S["Attachment"];
 
 export type Metric = S["Metric"];
 export type MetricMode = S["MetricMode"];

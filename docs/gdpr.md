@@ -10,9 +10,12 @@ D18 (scoped Role-Based Access Control (RBAC)).
 | Data                                                | Table(s)            | Sensitivity              |
 | --------------------------------------------------- | ------------------- | ------------------------ |
 | Name, email                                         | `accounts`          | PII                      |
+| Extra addresses a person emails from (D29)          | `account_emails`    | PII                      |
+| Raw inbound emails + their attachments (D28)        | R2 `lsq-inbound-raw`, `attachments` | PII, sometimes sensitive |
 | Which units a person is associated with             | `grants`            | PII (household)          |
 | Ticket contents (issues, correspondence, unit refs) | `tickets`, `events` | PII, sometimes sensitive |
 | Inbound sender emails / domains                     | `senders`           | PII                      |
+| Forward destinations of main-domain aliases (D26)   | `config` (`mail_aliases`) | PII (personal inboxes)   |
 | Survey answers                                      | `survey_responses`  | opinion, **anonymised**  |
 | Who voted in a survey                               | `survey_ballots`    | PII (participation only) |
 
@@ -25,16 +28,25 @@ audited.
 - **Data minimisation.** `accounts` is identity-only (name, email, active).
   Everything else hangs off it by reference.
 - **Purpose limitation.** Data exists to run tickets, scoring, and comms for the
-  estate. No secondary use, no third-party processors beyond MailerSend (email
-  transport) — a documented processor.
+  estate. No secondary use, two documented processors: MailerSend
+  (outbound email) and Cloudflare (hosting, inbound Email Routing, which also
+  holds alias forward destinations).
 - **Lawful basis.** Legitimate interest of the freeholder/board in managing the
   estate; residents are informed. No marketing, no profiling.
+- **Raw mail and attachments** (R2) follow the ticket's retention. Erasing a
+  person deletes the raw emails they sent; file attachments stay with the ticket (D30).
 - **Retention.** Tickets/events retained while the matter and its scoring window
   are live, then archivable. `access_log` retained for a bounded audit window
   (e.g. 12 months) then purged. Codify exact periods before go-live.
-- **Data-subject rights.** Access/erasure served by querying/deleting by
-  `account_id`; anonymous survey responses are out of scope for erasure by
-  design (they carry no identity).
+- **Data-subject rights.** Access is served by querying by `account_id`.
+  **Erasure = move-out**: a manual board action ("Delete user" in the
+  directory, D30). It removes name, email, access and extra addresses, and the
+  raw emails they sent. Their ticket history stays, attributed to
+  "Resident of Flat 12, Banbury Point" (or their role, for staff).
+  **Residual:** names or signatures inside comment/email text, ticket titles
+  and photos are kept under legitimate interest as the ticket record; redacting
+  them is a manual tech-op on request. Anonymous survey responses carry no
+  identity and are out of scope.
 
 ## Access control (privacy by RBAC — D18)
 

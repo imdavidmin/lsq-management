@@ -62,8 +62,19 @@ are scoped RBAC (`roles` + `role_permissions` + `grants`) enforced in the Worker
 - **MailerSend** free tier for now (OTP, chases, reports, notifications — one
   shared transactional sender). Upgrade tier or swap provider later; it's one
   module.
-- Requires **SPF + DKIM + DMARC** on `lansburysquare.co.uk` or mail lands in spam.
-  One-time DNS setup.
+- **Setup (done):** the domain is verified in MailerSend. SPF, DKIM
+  (`ms1._domainkey`), return-path (`mta`) and DMARC are live; see
+  `architecture.md` → *Domain & mail DNS*. Mail goes from
+  `MAIL_FROM_NAME <MAIL_FROM>` (`Lansbury Square <ops@…>`). `ops@` has no
+  alias, so replies bounce; it's a no-reply sender until the board adds one (D26).
+- **Key:** a send-only API token, stored as the `MAILERSEND_API_KEY` Worker
+  secret and kept locally in `.env` (gitignored). Without it (`wrangler dev`
+  with a `.dev.vars`, tests) `sendMail` logs the mail instead of sending.
+- `sendMail` never throws: a MailerSend failure is logged, so
+  `/auth/otp/request` stays always-204 (no enumeration).
+- Free tier has a monthly send cap and, while the account is unapproved, a
+  recipient restriction. That's fine at ~200 units; watch it if notifications
+  grow.
 
 ## Rejected alternatives
 

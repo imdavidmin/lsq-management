@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   Badge,
   Button,
+  Combobox,
   Dialog,
   DialogActions,
   DialogBody,
@@ -16,6 +17,7 @@ import {
   Field,
   Input,
   Option,
+  OptionGroup,
   OverlayDrawer,
   Spinner,
   Text,
@@ -32,7 +34,7 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import { Dismiss20Regular, Eye20Regular, PeopleTeam20Regular, PersonAdd20Regular } from "@fluentui/react-icons";
+import { Delete20Regular, Dismiss20Regular, Eye20Regular, PeopleTeam20Regular, PersonAdd20Regular } from "@fluentui/react-icons";
 import type { ColDef } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { agTheme } from "../../lib/grid";
@@ -44,22 +46,29 @@ import { dateTime } from "../../lib/format";
 import {
   useAccount,
   useAccounts,
+  useAddAccountEmail,
   useBuildings,
   useCreateAccount,
   useCreateGrant,
   useCreateOrganization,
   useCreateRole,
+  useDeleteAccount,
   useDeleteGrant,
+  useDeleteMailAlias,
+  useLinkSenderToAccount,
+  useMailAliases,
   useOrganizations,
   usePatchSender,
+  useRemoveAccountEmail,
   useRevealEmail,
   useRevealUnits,
   useRoles,
+  useSaveMailAlias,
   useSenders,
   useSetRolePermissions,
   useUnits,
 } from "./api";
-import type { Grant, Role, ScopeType } from "../../api/types";
+import type { Grant, MailAlias, Role, ScopeType } from "../../api/types";
 
 const useStyles = makeStyles({
   tabs: { marginBottom: tokens.spacingVerticalL },
@@ -71,6 +80,9 @@ const useStyles = makeStyles({
     marginBottom: tokens.spacingVerticalM,
   },
   dialogForm: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalM },
+  error: { color: tokens.colorPaletteRedForeground1 },
+  deleteUser: { marginTop: tokens.spacingVerticalXXL, color: tokens.colorPaletteRedForeground1 },
+  danger: { backgroundColor: tokens.colorPaletteRedBackground3, ":hover": { backgroundColor: tokens.colorPaletteRedForeground1 } },
   grid: { width: "100%", height: "70vh" },
   drawer: { width: "420px" },
   // Assign form inside the narrow drawer: stack vertically, full-width controls,
@@ -112,25 +124,44 @@ function UnitCell({ id }: { id: number }) {
   return <RevealCell isFetching={q.isFetching} value={q.data?.units?.join(", ")} onReveal={() => setRevealed(true)} />;
 }
 
-// Create-resident dialog: collect identity + household, then POST /accounts,
-// which creates the account, a resident grant for the unit, and emails an
-// activation invite (passwordless — the email points them at sign-in).
+// Roles that live on the estate pick a building + typed unit (board members are
+// residents too); contractors belong to an organization; other staff need neither.
+const HOME_ROLES = ["resident", "board"];
+
+// Create-user dialog → POST /accounts, which creates the account + grants for
+// the chosen role and emails a passwordless invite (the email points at sign-in).
 function NewUserDialog() {
   const s = useStyles();
   const create = useCreateAccount();
+  const roles = useRoles();
   const buildings = useBuildings();
+  const orgs = useOrganizations();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [roleKey, setRoleKey] = useState("resident");
   const [buildingId, setBuildingId] = useState<number | null>(null);
-  const [unitId, setUnitId] = useState<number | null>(null);
+  const [unit, setUnit] = useState("");
+  const [orgId, setOrgId] = useState<number | null>(null);
   const units = useUnits(buildingId);
 
-  const reset = () => { setName(""); setEmail(""); setBuildingId(null); setUnitId(null); };
-  const canSend = !!name && !!email && unitId != null && !create.isPending;
+  const needsHome = HOME_ROLES.includes(roleKey);
+  const needsOrg = roleKey === "contractor";
+  const reset = () => {
+    setName(""); setEmail(""); setRoleKey("resident"); setBuildingId(null); setUnit(""); setOrgId(null);
+  };
+  const canSend =
+    !!name && !!email && (!needsHome || (buildingId != null && !!unit.trim())) && (!needsOrg || orgId != null) &&
+    !create.isPending;
   const send = () =>
     create.mutate(
-      { name, email, unit_id: unitId },
+      {
+        name,
+        email,
+        role_key: roleKey,
+        ...(needsHome && { building_id: buildingId, unit: unit.trim() }),
+        ...(needsOrg && { org_id: orgId }),
+      },
       { onSuccess: () => { reset(); setOpen(false); } },
     );
 
@@ -141,7 +172,7 @@ function NewUserDialog() {
       </DialogTrigger>
       <DialogSurface>
         <DialogBody>
-          <DialogTitle>Invite a resident</DialogTitle>
+          <DialogTitle>Invite a user</DialogTitle>
           <DialogContent className={s.dialogForm}>
             <Field label="Full name" required>
               <Input value={name} onChange={(_, d) => setName(d.value)} />
@@ -149,35 +180,65 @@ function NewUserDialog() {
             <Field label="Email" required>
               <Input type="email" value={email} onChange={(_, d) => setEmail(d.value)} />
             </Field>
-            <Field label="Building" required>
+            <Field label="Role" required>
               <Dropdown
-                placeholder="Select building"
-                value={buildings.data?.find((b) => b.id === buildingId)?.name ?? ""}
-                selectedOptions={buildingId != null ? [String(buildingId)] : []}
-                onOptionSelect={(_, d) => { setBuildingId(Number(d.optionValue)); setUnitId(null); }}
+                value={roles.data?.find((r) => r.key === roleKey)?.name ?? ""}
+                selectedOptions={[roleKey]}
+                onOptionSelect={(_, d) => setRoleKey(d.optionValue!)}
               >
-                {(buildings.data ?? []).map((b) => (
-                  <Option key={b.id} value={String(b.id)} text={b.name ?? ""}>{b.name}</Option>
+                {(roles.data ?? []).map((r) => (
+                  <Option key={r.key} value={r.key!} text={r.name ?? ""}>{r.name}</Option>
                 ))}
               </Dropdown>
             </Field>
-            <Field label="Unit" required>
-              <Dropdown
-                placeholder="Select unit"
-                disabled={buildingId == null}
-                value={units.data?.find((u) => u.id === unitId)?.label ?? ""}
-                selectedOptions={unitId != null ? [String(unitId)] : []}
-                onOptionSelect={(_, d) => setUnitId(Number(d.optionValue))}
-              >
-                {(units.data ?? []).map((u) => (
-                  <Option key={u.id} value={String(u.id)} text={u.label ?? ""}>{u.label}</Option>
-                ))}
-              </Dropdown>
-            </Field>
+            {needsHome && (
+              <>
+                <Field label="Building" required>
+                  <Dropdown
+                    placeholder="Select building"
+                    value={buildings.data?.find((b) => b.id === buildingId)?.name ?? ""}
+                    selectedOptions={buildingId != null ? [String(buildingId)] : []}
+                    onOptionSelect={(_, d) => setBuildingId(Number(d.optionValue))}
+                  >
+                    {(buildings.data ?? []).map((b) => (
+                      <Option key={b.id} value={String(b.id)} text={b.name ?? ""}>{b.name}</Option>
+                    ))}
+                  </Dropdown>
+                </Field>
+                <Field label="Unit" required hint="Type the flat, e.g. Flat 12 — new units are added automatically.">
+                  <Combobox
+                    freeform
+                    placeholder="e.g. Flat 12"
+                    disabled={buildingId == null}
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value)}
+                    onOptionSelect={(_, d) => setUnit(d.optionText ?? "")}
+                  >
+                    {(units.data ?? [])
+                      .filter((u) => u.label?.toLowerCase().includes(unit.toLowerCase()))
+                      .map((u) => (
+                        <Option key={u.id} text={u.label ?? ""}>{u.label}</Option>
+                      ))}
+                  </Combobox>
+                </Field>
+              </>
+            )}
+            {needsOrg && (
+              <Field label="Organization" required>
+                <Dropdown
+                  placeholder="Select contractor"
+                  value={orgs.data?.find((o) => o.id === orgId)?.name ?? ""}
+                  selectedOptions={orgId != null ? [String(orgId)] : []}
+                  onOptionSelect={(_, d) => setOrgId(Number(d.optionValue))}
+                >
+                  {(orgs.data ?? []).filter((o) => o.kind === "contractor").map((o) => (
+                    <Option key={o.id} value={String(o.id)} text={o.name ?? ""}>{o.name}</Option>
+                  ))}
+                </Dropdown>
+              </Field>
+            )}
             {create.isError && (
-              <Text style={{ color: tokens.colorPaletteRedForeground1 }}>
-                {(create.error as Error)?.message ?? "Could not create the account."}
-              </Text>
+              <Text className={s.error}>{(create.error as Error)?.message ?? "Could not create the account."}</Text>
             )}
           </DialogContent>
           <DialogActions>
@@ -282,10 +343,13 @@ function AccountsPanel() {
 }
 
 // UJ-07: unknown-sender queue. Link a pending sender to an org, or ignore it.
+// Unknown senders: link an email to a person (D29) or an address/domain to an org.
 function SendersPanel() {
   const q = useSenders("new");
   const orgs = useOrganizations();
+  const people = useAccounts();
   const patch = usePatchSender();
+  const link = useLinkSenderToAccount();
   return (
     <div>
       <Title3>Unknown senders</Title3>
@@ -297,7 +361,7 @@ function SendersPanel() {
                 <TableHeaderCell>Match</TableHeaderCell>
                 <TableHeaderCell>Hits</TableHeaderCell>
                 <TableHeaderCell>Last seen</TableHeaderCell>
-                <TableHeaderCell>Link to org</TableHeaderCell>
+                <TableHeaderCell>Link to</TableHeaderCell>
                 <TableHeaderCell />
               </TableRow>
             </TableHeader>
@@ -309,14 +373,25 @@ function SendersPanel() {
                   <TableCell>{dateTime(s.last_seen)}</TableCell>
                   <TableCell>
                     <Dropdown
-                      placeholder="Select org"
-                      onOptionSelect={(_, d) =>
-                        patch.mutate({ id: s.id!, org_id: Number(d.optionValue), status: "linked" })
-                      }
+                      placeholder="Person or organization"
+                      onOptionSelect={(_, d) => {
+                        const [kind, id] = (d.optionValue ?? "").split(":");
+                        if (kind === "a") link.mutate({ id: s.id!, account_id: Number(id) });
+                        else patch.mutate({ id: s.id!, org_id: Number(id), status: "linked" });
+                      }}
                     >
-                      {(orgs.data ?? []).map((o) => (
-                        <Option key={o.id} value={String(o.id)} text={o.name ?? ""}>{o.name}</Option>
-                      ))}
+                      {s.match_type === "email" && (
+                        <OptionGroup label="People">
+                          {(people.data ?? []).map((a) => (
+                            <Option key={`a${a.id}`} value={`a:${a.id}`} text={a.name ?? ""}>{a.name}</Option>
+                          ))}
+                        </OptionGroup>
+                      )}
+                      <OptionGroup label="Organizations">
+                        {(orgs.data ?? []).map((o) => (
+                          <Option key={`o${o.id}`} value={`o:${o.id}`} text={o.name ?? ""}>{o.name}</Option>
+                        ))}
+                      </OptionGroup>
                     </Dropdown>
                   </TableCell>
                   <TableCell>
@@ -373,6 +448,128 @@ function OrgsPanel() {
         )}
       </Query>
     </div>
+  );
+}
+
+// Split a comma/space-separated address list into a clean array.
+const parseEmails = (text: string) => text.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean);
+
+// Board-provisioned @lansburysquare.co.uk forwards (D26). The agent can read
+// these (mail:read); only board/admin can change them (mail:manage).
+function MailPanel() {
+  const s = useStyles();
+  const q = useMailAliases();
+  const save = useSaveMailAlias();
+  const remove = useDeleteMailAlias();
+  const { has } = usePermissions();
+  const canManage = has("mail:manage");
+  const [localPart, setLocalPart] = useState("");
+  const [forwardTo, setForwardTo] = useState("");
+  return (
+    <div>
+      <Title3>Email addresses</Title3>
+      <Text block>
+        Addresses on the main domain forward to the destinations listed. Cloudflare emails each new destination a
+        verification link; mail only forwards once it's clicked.
+      </Text>
+      {canManage && (
+        <div className={s.form}>
+          <Field label="Address">
+            <Input value={localPart} onChange={(_, d) => setLocalPart(d.value.toLowerCase())} contentAfter={<Text>@lansburysquare.co.uk</Text>} />
+          </Field>
+          <Field label="Forward to (comma-separated)">
+            <Input value={forwardTo} onChange={(_, d) => setForwardTo(d.value)} />
+          </Field>
+          <Button
+            appearance="primary"
+            // PUT replaces, so an existing name is changed via Edit, not re-added.
+            disabled={save.isPending || !localPart || !forwardTo || !!q.data?.some((a) => a.local_part === localPart)}
+            onClick={() =>
+              save.mutate(
+                { local_part: localPart, forward_to: parseEmails(forwardTo) },
+                { onSuccess: () => { setLocalPart(""); setForwardTo(""); } }
+              )
+            }
+          >
+            Add
+          </Button>
+        </div>
+      )}
+      {save.error && <Text block className={s.error}>{save.error.message}</Text>}
+      <Query q={q}>
+        {(aliases) => (
+          <Table size="small">
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>Address</TableHeaderCell>
+                <TableHeaderCell>Forwards to</TableHeaderCell>
+                {canManage && <TableHeaderCell />}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {aliases.map((a) => (
+                <TableRow key={a.local_part}>
+                  <TableCell>{a.address}</TableCell>
+                  <TableCell>
+                    {a.forward_to.map((d) => (
+                      <div key={d.email}>
+                        {d.email}{" "}
+                        {d.verified === false && <Badge appearance="tint" color="warning">awaiting verification</Badge>}
+                      </div>
+                    ))}
+                  </TableCell>
+                  {canManage && (
+                    <TableCell>
+                      <EditAliasDialog alias={a} />{" "}
+                      <Button size="small" disabled={remove.isPending} onClick={() => remove.mutate(a.local_part)}>Remove</Button>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Query>
+    </div>
+  );
+}
+
+function EditAliasDialog({ alias }: { alias: MailAlias }) {
+  const s = useStyles();
+  const save = useSaveMailAlias();
+  const [open, setOpen] = useState(false);
+  const [forwardTo, setForwardTo] = useState("");
+  return (
+    <Dialog open={open} onOpenChange={(_, d) => { setOpen(d.open); if (d.open) setForwardTo(alias.forward_to.map((f) => f.email).join(", ")); }}>
+      <DialogTrigger disableButtonEnhancement>
+        <Button size="small">Edit</Button>
+      </DialogTrigger>
+      <DialogSurface>
+        <DialogBody>
+          <DialogTitle>{alias.address}</DialogTitle>
+          <DialogContent className={s.dialogForm}>
+            <Field label="Forward to (comma-separated)" validationMessage={save.error?.message}>
+              <Input value={forwardTo} onChange={(_, d) => setForwardTo(d.value)} />
+            </Field>
+          </DialogContent>
+          <DialogActions>
+            <DialogTrigger disableButtonEnhancement><Button>Cancel</Button></DialogTrigger>
+            <Button
+              appearance="primary"
+              disabled={save.isPending || !forwardTo}
+              onClick={() =>
+                save.mutate(
+                  { local_part: alias.local_part, forward_to: parseEmails(forwardTo) },
+                  { onSuccess: () => setOpen(false) }
+                )
+              }
+            >
+              Save
+            </Button>
+          </DialogActions>
+        </DialogBody>
+      </DialogSurface>
+    </Dialog>
   );
 }
 
@@ -483,9 +680,95 @@ function RoleRow({ role, canManage }: { role: Role; canManage: boolean }) {
 
 const SCOPE_TYPES: ScopeType[] = ["estate", "building", "unit", "organization"];
 
+// An account's email addresses: primary (login) + extra inbound ones (D29).
+// Masked until an audited reveal, like the email column.
+function EmailsSection({ accountId }: { accountId: number }) {
+  const s = useStyles();
+  const { has } = usePermissions();
+  const canManage = has("account:manage");
+  const [revealed, setRevealed] = useState(false);
+  const q = useRevealEmail(accountId, revealed);
+  const add = useAddAccountEmail();
+  const remove = useRemoveAccountEmail();
+  const [email, setEmail] = useState("");
+  return (
+    <div className={s.drawerForm}>
+      <Title3>Email addresses</Title3>
+      {!q.data ? (
+        <RevealCell isFetching={q.isFetching} onReveal={() => setRevealed(true)} />
+      ) : (
+        <>
+          <Text>{q.data.email} <Badge appearance="tint">login</Badge></Text>
+          {(q.data.emails ?? []).map((e) => (
+            <div key={e} className={s.header}>
+              <Text>{e}</Text>
+              {canManage && (
+                <Button size="small" disabled={remove.isPending} onClick={() => remove.mutate({ id: accountId, email: e })}>
+                  Remove
+                </Button>
+              )}
+            </div>
+          ))}
+          {canManage && (
+            <Field label="Add an address they email from" validationMessage={add.error?.message}>
+              <Input value={email} onChange={(_, d) => setEmail(d.value)} />
+            </Field>
+          )}
+          {canManage && (
+            <Button
+              disabled={add.isPending || !email}
+              onClick={() => add.mutate({ id: accountId, email }, { onSuccess: () => setEmail("") })}
+            >
+              Add address
+            </Button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // Side panel to view/assign a single account's role grants, scoped to a
 // building / unit / org / the whole estate (D18). Assign/revoke needs grant:manage.
 // Ticket-scoped grants are per-ticket sharing (UJ-08), managed from a ticket, not here.
+// Delete = move-out erasure (D30): irreversible, so behind a confirm dialog.
+function DeleteUserButton({ accountId, name, onDeleted }: { accountId: number; name: string; onDeleted: () => void }) {
+  const s = useStyles();
+  const del = useDeleteAccount();
+  return (
+    <Dialog>
+      <DialogTrigger disableButtonEnhancement>
+        <Button className={s.deleteUser} icon={<Delete20Regular />}>Delete user</Button>
+      </DialogTrigger>
+      <DialogSurface>
+        <DialogBody>
+          <DialogTitle>Delete {name}?</DialogTitle>
+          <DialogContent className={s.dialogForm}>
+            <Text>
+              This permanently removes their name, email and access. Their ticket history is kept and shown as
+              "Resident of &lt;unit&gt;" (or their role, for staff). This can't be undone.
+            </Text>
+            {del.isError && <Text className={s.error}>{(del.error as Error)?.message ?? "Could not delete."}</Text>}
+          </DialogContent>
+          <DialogActions>
+            <DialogTrigger disableButtonEnhancement>
+              <Button appearance="secondary">Cancel</Button>
+            </DialogTrigger>
+            <Button
+              appearance="primary"
+              className={s.danger}
+              disabled={del.isPending}
+              onClick={() => del.mutate(accountId, { onSuccess: onDeleted })}
+            >
+              {del.isPending ? "Deleting…" : "Delete user"}
+            </Button>
+          </DialogActions>
+        </DialogBody>
+      </DialogSurface>
+    </Dialog>
+  );
+}
+
 function AccessDrawer({ accountId, onClose }: { accountId: number | null; onClose: () => void }) {
   const s = useStyles();
   const { has } = usePermissions();
@@ -641,6 +924,10 @@ function AccessDrawer({ accountId, onClose }: { accountId: number | null; onClos
                   <Button appearance="primary" disabled={!canSubmit} onClick={submit}>Assign</Button>
                 </div>
               )}
+              <EmailsSection accountId={accountId} />
+              <Can perm="account:manage">
+                <DeleteUserButton accountId={accountId} name={detail.name ?? ""} onDeleted={onClose} />
+              </Can>
             </>
           )}
         </Query>
@@ -661,11 +948,13 @@ export function DirectoryPage() {
         {has("account:read") && <Tab value="accounts">Accounts</Tab>}
         {has("sender:read") && <Tab value="senders">Unknown senders</Tab>}
         {has("org:read") && <Tab value="orgs">Organizations</Tab>}
+        {has("mail:read") && <Tab value="mail">Email addresses</Tab>}
         {has("role:read") && <Tab value="permissions">Permissions</Tab>}
       </TabList>
       {tab === "accounts" && <AccountsPanel />}
       {tab === "senders" && <SendersPanel />}
       {tab === "orgs" && <OrgsPanel />}
+      {tab === "mail" && <MailPanel />}
       {tab === "permissions" && <PermissionsPanel />}
     </div>
   );

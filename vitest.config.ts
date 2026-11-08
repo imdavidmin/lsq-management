@@ -12,9 +12,10 @@ export default defineWorkersConfig(async () => {
           isolatedStorage: true,
           wrangler: { configPath: "./wrangler.jsonc" },
           miniflare: {
-            // TEST_MIGRATIONS applied in setup. Blank DEV_LOGIN_EMAIL so the
-            // .dev.vars auth bypass (session.ts) never leaks into tests.
-            bindings: { TEST_MIGRATIONS: migrations, DEV_LOGIN_EMAIL: "" },
+            // TEST_MIGRATIONS applied in setup. Blank DEV_LOGIN_EMAIL and
+            // MAILERSEND_API_KEY so a local .dev.vars/.env never leaks in
+            // (auth bypass, real outbound mail).
+            bindings: { TEST_MIGRATIONS: migrations, DEV_LOGIN_EMAIL: "", MAILERSEND_API_KEY: "" },
           },
         },
       },

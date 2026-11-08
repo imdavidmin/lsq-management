@@ -135,13 +135,58 @@ export async function getTicket(env: Env, id: number): Promise<Ticket | null> {
   return one<Ticket>(env.DB, "SELECT * FROM tickets WHERE id = ?", id);
 }
 
-export async function ticketEvents(env: Env, id: number): Promise<TicketEvent[]> {
-  return all<TicketEvent>(
-    env.DB,
-    `SELECT * FROM events WHERE subject_type = 'ticket' AND subject_id = ? ORDER BY at, id`,
-    id
-  );
+export interface Attachment {
+  id: number;
+  event_id: number;
+  kind: "file" | "original";
+  filename: string;
+  content_type: string;
+  size: number;
 }
+
+// A ticket's timeline, each event with its attachments and actor_name. The name
+// resolves at read time, also via extra account addresses (D29); actor_role is
+// never re-derived, so SLA results don't move (D7, D21).
+export async function ticketEvents(
+  env: Env,
+  id: number
+): Promise<(TicketEvent & { actor_name: string | null; attachments: Omit<Attachment, "event_id">[] })[]> {
+  const [events, attachments] = await Promise.all([
+    all<TicketEvent & { actor_name: string | null }>(
+      env.DB,
+      `SELECT e.*, COALESCE(a.name, pa.name, la.name) AS actor_name
+         FROM events e
+         LEFT JOIN accounts a ON a.id = e.actor_id
+         LEFT JOIN accounts pa ON pa.email = e.actor_email
+         LEFT JOIN account_emails ae ON ae.email = e.actor_email
+         LEFT JOIN accounts la ON la.id = ae.account_id
+        WHERE e.subject_type = 'ticket' AND e.subject_id = ?
+        ORDER BY e.at, e.id`,
+      id
+    ),
+    all<Attachment>(
+      env.DB,
+      `SELECT a.id, a.event_id, a.kind, a.filename, a.content_type, a.size
+         FROM attachments a JOIN events e ON e.id = a.event_id
+        WHERE e.subject_type = 'ticket' AND e.subject_id = ? ORDER BY a.id`,
+      id
+    ),
+  ]);
+  return events.map((e) => ({
+    ...e,
+    attachments: attachments.filter((a) => a.event_id === e.id).map(({ event_id, ...a }) => a),
+  }));
+}
+
+// An attachment on one of this ticket's events (null if it belongs elsewhere).
+export const ticketAttachment = (env: Env, ticketId: number, attachmentId: number) =>
+  one<Attachment & { r2_key: string }>(
+    env.DB,
+    `SELECT a.* FROM attachments a JOIN events e ON e.id = a.event_id
+      WHERE a.id = ? AND e.subject_type = 'ticket' AND e.subject_id = ?`,
+    attachmentId,
+    ticketId
+  );
 
 interface EventInput {
   actor_id?: number | null;

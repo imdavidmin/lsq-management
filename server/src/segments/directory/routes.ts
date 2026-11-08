@@ -7,6 +7,7 @@ import { badRequest, conflict, notFound } from "../../lib/errors";
 import { requireSession } from "../../middleware/session";
 import { requirePermission } from "../../middleware/rbac";
 import { logAccess } from "../../lib/audit";
+import { primaryRole } from "../../../../common/roles";
 import * as svc from "./service";
 
 const serializeAccount = (a: Account) => ({ ...a, active: !!a.active });
@@ -25,13 +26,24 @@ directory.get("/accounts", requirePermission("account:read"), async (c) => {
 });
 
 directory.post("/accounts", requirePermission("account:manage"), async (c) => {
-  const { email, name, unit_id } = await body(
+  const a = await body(
     c,
-    z.object({ email: z.string().email(), name: z.string().min(1), unit_id: z.number().int().nullish() })
+    z
+      .object({
+        email: z.string().email(),
+        name: z.string().min(1),
+        role_key: z.string().min(1),
+        building_id: z.number().int().nullish(),
+        unit: z.string().trim().min(1).nullish(),
+        org_id: z.number().int().nullish(),
+      })
+      .refine((a) => !a.unit || a.building_id != null, { message: "building_id required with unit" })
+      .refine((a) => a.role_key !== "resident" || !!a.unit, { message: "a resident needs a unit" })
   );
-  if (await svc.accountByEmail(c.env, email)) conflict("email already exists");
-  const loginUrl = new URL(c.req.url).origin;
-  return c.json(serializeAccount(await svc.inviteAccount(c.env, { email, name, unit_id, loginUrl })), 201);
+  if (await svc.emailInUse(c.env, a.email)) conflict("email already exists");
+  const res = await svc.inviteAccount(c.env, { ...a, loginUrl: new URL(c.req.url).origin });
+  if ("error" in res) return badRequest(res.error);
+  return c.json(serializeAccount(res), 201);
 });
 
 // PII reveal: ?reveal=email,units unmasks those fields and audits which were
@@ -52,6 +64,29 @@ directory.patch("/accounts/:id", requirePermission("account:manage"), async (c) 
   const p = await body(c, z.object({ name: z.string().min(1), active: z.boolean() }).partial());
   if (!(await svc.getAccount(c.env, idParam(c)))) notFound("no such account");
   return c.json(serializeAccount(await svc.patchAccount(c.env, idParam(c), p)));
+});
+
+// Erasure = move-out (D30): anonymises the account, keeps the ticket record.
+directory.delete("/accounts/:id", requirePermission("account:manage"), async (c) => {
+  const id = idParam(c);
+  if (id === c.var.account.id) badRequest("you can't delete your own account");
+  if (!(await svc.getAccount(c.env, id))) notFound("no such account");
+  await svc.eraseAccount(c.env, id, c.var.account.id);
+  return c.body(null, 204);
+});
+
+// Extra inbound addresses (D29). Read via GET /accounts/:id?reveal=email.
+directory.post("/accounts/:id/emails", requirePermission("account:manage"), async (c) => {
+  const { email } = await body(c, z.object({ email: z.string().email() }));
+  if (!(await svc.getAccount(c.env, idParam(c)))) notFound("no such account");
+  if (await svc.emailInUse(c.env, email)) conflict("email already in use");
+  await svc.addAccountEmail(c.env, idParam(c), email, c.var.account.id);
+  return c.body(null, 204);
+});
+
+directory.delete("/accounts/:id/emails/:email", requirePermission("account:manage"), async (c) => {
+  if (!(await svc.removeAccountEmail(c.env, idParam(c), c.req.param("email")))) notFound("no such address");
+  return c.body(null, 204);
 });
 
 directory.get("/accounts/:id/grants", requirePermission("grant:read"), async (c) =>
@@ -168,7 +203,53 @@ directory.patch("/senders/:id", requirePermission("sender:manage"), async (c) =>
   return c.json(s);
 });
 
+// Link an unknown email sender to a person instead of an org (D29).
+directory.post("/senders/:id/account", requirePermission("sender:manage"), async (c) => {
+  const { account_id } = await body(c, z.object({ account_id: z.number().int() }));
+  const res = await svc.linkSenderToAccount(c.env, idParam(c), account_id, c.var.account.id);
+  if (res === "no_sender") notFound("no such sender");
+  if (res === "no_account") notFound("no such account");
+  if (res === "domain") badRequest("only an email sender can be linked to a person");
+  if (res === "in_use") conflict("email already belongs to an account");
+  return c.body(null, 204);
+});
+
 directory.delete("/senders/:id", requirePermission("sender:manage"), async (c) => {
   if (!(await svc.deleteSender(c.env, idParam(c)))) notFound("no such sender");
+  return c.body(null, 204);
+});
+
+// ---- mail aliases (D26) --------------------------------------------------
+// Board-provisioned <local_part>@MAIL_DOMAIN forwards. mail:manage is board/admin
+// only, so the agent can't re-point board@ (D26).
+const localPart = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9._-]{0,63}$/, "lowercase letters, digits, . _ - only")
+  .refine((l) => !/^\d+$/.test(l), "all-digit addresses look like tickets");
+const aliasActor = (c: any) => ({ id: c.get("account").id, role: primaryRole(c.get("grants")) });
+
+directory.get("/mail-aliases", requirePermission("mail:read"), async (c) => c.json(await svc.listMailAliases(c.env)));
+
+directory.put("/mail-aliases/:local_part", requirePermission("mail:manage"), async (c) => {
+  const name = localPart.safeParse(c.req.param("local_part"));
+  if (!name.success) badRequest(name.error.issues[0]?.message);
+  const own = c.env.MAIL_DOMAIN;
+  const { forward_to } = await body(
+    c,
+    z.object({
+      forward_to: z
+        .array(z.string().email().transform((e) => e.toLowerCase()))
+        .min(1)
+        .max(10)
+        .refine((list) => list.every((e) => !e.endsWith(`@${own}`) && !e.endsWith(`.${own}`)), {
+          message: "can't forward to our own domain (mail loop)",
+        }),
+    })
+  );
+  return c.json(await svc.putMailAlias(c.env, aliasActor(c), name.data!, forward_to));
+});
+
+directory.delete("/mail-aliases/:local_part", requirePermission("mail:manage"), async (c) => {
+  if (!(await svc.deleteMailAlias(c.env, aliasActor(c), c.req.param("local_part")))) notFound("no such alias");
   return c.body(null, 204);
 });

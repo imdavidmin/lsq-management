@@ -5,6 +5,12 @@
   "compatibility_date": "2024-09-23",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // <ticketId>@TICKET_EMAIL_DOMAIN threads (D25); <alias>@MAIL_DOMAIN forwards
+  // to the alias's destinations (D26); anything else is rejected.
+  "vars": {
+    "TICKET_EMAIL_DOMAIN": "ticket.lansburysquare.co.uk",
+    "MAIL_DOMAIN": "lansburysquare.co.uk"
+  },
   // Shared D1 (same database as the server) — read-only here for the ticket check.
   "d1_databases": [
     { "binding": "DB", "database_name": "lsq", "database_id": "3c483ac5-23db-40a4-a0ef-69e94c786281" }
@@ -17,6 +23,8 @@
   "queues": {
     "producers": [{ "queue": "lsq-inbound", "binding": "INBOUND" }]
   }
-  // Email Routing: point the catch-all *@lansburysquare.co.uk at THIS Worker
-  // in the Cloudflare dashboard (Email Routing → Email Workers).
+  // Email Routing: the zone catch-all (main domain + ticket. subdomain) routes
+  // everything to THIS Worker.
+  // `wrangler email routing rules update` refuses a worker action on the
+  // catch-all, so it was set via the API (PUT /zones/:id/email/routing/rules/catch_all).
 }

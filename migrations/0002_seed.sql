@@ -28,6 +28,7 @@ INSERT OR IGNORE INTO role_permissions (role_key, permission) VALUES
   ('agent', 'survey:manage'),
   ('agent', 'config:read'),
   ('agent', 'sla:read'),             -- the SLAs they're measured against
+  ('agent', 'mail:read'),            -- see aliases, not change them: board@ is the board's (D26)
 
   ('resident', 'ticket:read'),
   ('resident', 'ticket:create'),

@@ -369,6 +369,53 @@ export interface paths {
         };
         trace?: never;
     };
+    "/tickets/{id}/attachments/{attachmentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                attachmentId: number;
+            };
+            cookie?: never;
+        };
+        /**
+         * Download an email comment's attachment or original message (D28)
+         * @description Streams the file from R2. Always sent with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`; only PNG/JPEG/GIF/WebP/PDF are served inline, everything else (incl. the `.eml` original) as a download.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                    attachmentId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The file */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/octet-stream": string;
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tickets/{id}/events": {
         parameters: {
             query?: never;
@@ -523,7 +570,7 @@ export interface paths {
         put?: never;
         /**
          * Create / invite an account
-         * @description Creates the account and emails an invitation. Activation is the passwordless OTP flow (docs/authentication.md) — the email points the recipient at sign-in, no separate token. If `unit_id` is given, a `resident`-role grant scoped to that unit is created, associating the person with their household.
+         * @description Creates the account and its grants, then emails an invitation. Activation is the passwordless OTP flow (docs/authentication.md) — the email points the recipient at sign-in, no separate token. A `unit` (free text, matched case-insensitively within `building_id`, created if new) adds a `resident` grant on that unit. Any role other than `resident` is granted on `org_id`'s organization if given, else estate-wide — so a board member sends role `board` plus their unit, and staff (e.g. concierge as `agent`) send no building or unit.
          */
         post: {
             parameters: {
@@ -538,8 +585,13 @@ export interface paths {
                         /** Format: email */
                         email: string;
                         name: string;
-                        /** @description Resident's unit; creates a resident grant when present. */
-                        unit_id?: number | null;
+                        /** @example resident */
+                        role_key: string;
+                        /** @description Required with `unit`. */
+                        building_id?: number | null;
+                        /** @description Unit label, e.g. "Flat 12". Required for `resident`. */
+                        unit?: string | null;
+                        org_id?: number | null;
                     };
                 };
             };
@@ -551,6 +603,13 @@ export interface paths {
                     content: {
                         "application/json": components["schemas"]["Account"];
                     };
+                };
+                /** @description Unknown role/building/organization */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
                 };
                 /** @description Email already exists */
                 409: {
@@ -608,7 +667,33 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete (erase) an account — move-out (D30)
+         * @description Turns the account into an anonymous tombstone named for the household ("Resident of Flat 12, Banbury Point") or, for staff, the role (plus organization). Removes email, grants, sessions, login codes and extra addresses; rewrites stored raw From addresses to the tombstone; deletes the raw `original` emails they sent. Comment text and file attachments are kept. Appends an `erase` event (subject `account`). Irreversible. You can't delete your own account.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Erased */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
         options?: never;
         head?: never;
         /** Rename or (de)activate an account */
@@ -676,6 +761,105 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/accounts/{id}/emails": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add an extra inbound address to an account (D29)
+         * @description Attributes inbound email from this address to the account. Never a login identity: OTP and notifications use the primary email. Listed via `GET /accounts/{id}?reveal=email`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: email */
+                        email: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Added */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                /** @description Address already belongs to an account */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/accounts/{id}/emails/{email}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                email: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove an extra inbound address */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                    email: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -1174,6 +1358,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/senders/{id}/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link an unknown email sender to a person (D29)
+         * @description Moves the address onto the account as an extra inbound address and removes the sender row. Email senders only.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        account_id: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Linked */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                /** @description Address already belongs to an account */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/senders/{id}": {
         parameters: {
             query?: never;
@@ -1239,6 +1480,128 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/mail-aliases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List board-provisioned @lansburysquare.co.uk addresses (D26)
+         * @description Requires `mail:read`. Aliases are one JSON doc (`config` row `mail_aliases`); each destination's `verified` flag comes live from Cloudflare Email Routing (the email Worker can only forward to verified destinations).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MailAlias"][];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mail-aliases/{local_part}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description e.g. `board` for board@lansburysquare.co.uk; lowercase, not all digits */
+                local_part: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Create or replace an alias's destinations (board/admin, `mail:manage`)
+         * @description The email Worker forwards a copy of each message to every destination. New destinations are registered with Cloudflare Email Routing and get a one-time verification email; they receive nothing until it's clicked. Every change is appended to `events` (subject_type `mail_alias`).
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description e.g. `board` for board@lansburysquare.co.uk; lowercase, not all digits */
+                    local_part: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description External addresses only (not our own domains) */
+                        forward_to: string[];
+                    };
+                };
+            };
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MailAlias"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+                /** @description Cloudflare Email Routing call failed */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        /** Remove an alias (`mail:manage`) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description e.g. `board` for board@lansburysquare.co.uk; lowercase, not all digits */
+                    local_part: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/score": {
@@ -2244,6 +2607,8 @@ export interface components {
              * @description Present only when reveal=email
              */
             email?: string;
+            /** @description Extra inbound addresses (D29); present only when reveal=email. */
+            emails?: string[];
             grants?: components["schemas"]["Grant"][];
             /** @description Resolved unit labels; present only when reveal=units. */
             units?: string[];
@@ -2289,6 +2654,21 @@ export interface components {
             /** @enum {string} */
             kind: "agent" | "contractor";
         };
+        MailAlias: {
+            /** @example board */
+            local_part: string;
+            /**
+             * Format: email
+             * @example board@lansburysquare.co.uk
+             */
+            address: string;
+            forward_to: {
+                /** Format: email */
+                email: string;
+                /** @description null when the server has no Cloudflare token (dev) */
+                verified: boolean | null;
+            }[];
+        };
         Sender: {
             id?: number;
             /** @enum {string} */
@@ -2313,8 +2693,13 @@ export interface components {
         /** @enum {string} */
         TicketStatus: "open" | "pending_3rd_party" | "resolved" | "closed";
         Ticket: {
-            /** @description Also the local part of <id>@lansburysquare.co.uk */
+            /** @description Also the local part of the ticket's reply_to address */
             id?: number;
+            /**
+             * Format: email
+             * @description Inbound address for this ticket: <id>@ticket.lansburysquare.co.uk (D25)
+             */
+            reply_to?: string;
             title?: string;
             building_id?: number | null;
             unit_id?: number | null;
@@ -2361,6 +2746,21 @@ export interface components {
             source?: "ui" | "email" | "ai" | "system";
             ai_processed?: boolean;
             ai_summary?: string | null;
+            /** @description Ticket timeline only: account name by actor_id or actor_email (incl. extra addresses), resolved at read time (D29) */
+            actor_name?: string | null;
+            /** @description Ticket timeline only (D28) */
+            attachments?: components["schemas"]["Attachment"][];
+        };
+        Attachment: {
+            id: number;
+            /**
+             * @description original = the raw .eml
+             * @enum {string}
+             */
+            kind: "file" | "original";
+            filename: string;
+            content_type: string;
+            size: number;
         };
         Snapshot: {
             /**
