@@ -583,3 +583,21 @@ site), because cron and queue Workers have no request to take an origin from.
   images still show the name beside it.
 - **Inline styles and tables:** mail clients drop `<style>` blocks and modern
   layout. Everything a user wrote is escaped before it goes into the HTML.
+
+### D36 — Ticket urgency is the SLA clock, not inactivity
+
+Ticket list and detail reads carry `sla_due`: the running SLA instance with the
+fewest working days left (`budget_days − days`, negative once overdue),
+computed on read with the D21 evaluator (`nextDue` in `server/src/lib/sla.ts`).
+It is null for resolved/closed tickets, when nothing is running, and for
+callers without `sla:read`. `/tickets` marks a ticket urgent when `sla_due`
+is at most 1 working day. That drives the red group and the "Immediate
+follow-up" card, and each card and grid row shows the countdown. The old rule
+(14 days without activity) is gone. A ticket with no running SLA is never
+urgent. The daily cron chase still handles stale tickets (D14).
+
+**Why:** SLA budgets are as short as 2 working days (Acknowledged), so a
+ticket breached long before it looked "inactive". The server computes the
+countdown so the frontend doesn't need SLA definitions or working-day maths.
+The list already loads every event on the page, so this costs one extra query
+for the SLA definitions.

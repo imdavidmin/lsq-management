@@ -268,5 +268,28 @@ describe("tickets", () => {
     expect((await req(`/api/tickets/${t.id}/attachments/${png}`, b.cookie)).status).toBe(403); // out of scope
     expect((await req(`/api/tickets/${other.id}/attachments/${png}`, b.cookie)).status).toBe(404); // wrong ticket
   });
-});
 
+  it("carries the soonest running SLA as sla_due, for sla:read callers only (D36)", async () => {
+    const res = await login("sla-due-res@lsq.test", "resident", "unit", 101);
+    const t = (await (await post("/api/tickets", res.cookie, { title: "Lift stuck", description: "again", unit_id: 101 })).json()) as any;
+    // Backdate so Acknowledged (2 wd, no staff reply yet) is overdue.
+    await env.DB.prepare("UPDATE tickets SET created_at = '2026-01-05T09:00:00Z' WHERE id = ?").bind(t.id).run();
+
+    const agent = await login("sla-due-agent@lsq.test", "agent", "estate", null);
+    const listed = ((await (await req("/api/tickets", agent.cookie)).json()) as any).data.find((x: any) => x.id === t.id);
+    expect(listed.sla_due).toMatchObject({ name: "Acknowledged" });
+    expect(listed.sla_due.remaining_days).toBeLessThan(0);
+    const detail = (await (await req(`/api/tickets/${t.id}`, agent.cookie)).json()) as any;
+    expect(detail.sla_due).toEqual(listed.sla_due);
+
+    const mine = ((await (await req("/api/tickets", res.cookie)).json()) as any).data.find((x: any) => x.id === t.id);
+    expect(mine.sla_due).toBeNull();
+
+    expect((await post(`/api/tickets/${t.id}/events`, agent.cookie, { body: "On it" })).status).toBe(201);
+    const acked = (await (await req(`/api/tickets/${t.id}`, agent.cookie)).json()) as any;
+    expect(acked.sla_due).toBeNull();
+
+    await req(`/api/tickets/${t.id}`, agent.cookie, { method: "PATCH", body: JSON.stringify({ status: "resolved" }) });
+    expect(((await (await req(`/api/tickets/${t.id}`, agent.cookie)).json()) as any).sla_due).toBeNull();
+  });
+});

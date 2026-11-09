@@ -59,3 +59,8 @@ export function lastEventLabel(e?: Event): string {
     default: return humanize(e.type ?? "Updated");
   }
 }
+
+// Remaining working days on a ticket's soonest SLA (D36) → short label + colour.
+export const slaDueLabel = (days: number) =>
+  days < 0 ? `Overdue ${-days}d` : days === 0 ? "Due today" : `Due in ${days}d`;
+export const slaDueColor = (days: number) => (days <= 0 ? "danger" : days === 1 ? "warning" : "informative");

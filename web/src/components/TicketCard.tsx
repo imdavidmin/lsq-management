@@ -1,7 +1,7 @@
-import { Card, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
+import { Badge, Card, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import type { Event, Ticket } from "../api/types";
 import { date } from "../lib/format";
-import { categoryColor, humanize, lastEventLabel } from "./ticketDisplay";
+import { categoryColor, humanize, lastEventLabel, slaDueColor, slaDueLabel } from "./ticketDisplay";
 
 const useStyles = makeStyles({
   card: {
@@ -38,6 +38,7 @@ const useStyles = makeStyles({
     fontWeight: tokens.fontWeightSemibold,
     whiteSpace: "nowrap",
   },
+  tags: { display: "flex", alignItems: "center", gap: tokens.spacingHorizontalXS },
   contractor: {
     fontSize: tokens.fontSizeBase100,
     fontWeight: tokens.fontWeightSemibold,
@@ -97,7 +98,14 @@ export function TicketCard({
         <span className={s.pill} style={{ backgroundColor: color.fg, color: tokens.colorNeutralBackground1 }}>
           {ticket.category ? humanize(ticket.category) : "uncategorised"}
         </span>
-        {ticket.needs_contractor && <span className={s.contractor}>CONTRACTOR</span>}
+        <span className={s.tags}>
+          {ticket.needs_contractor && <span className={s.contractor}>CONTRACTOR</span>}
+          {ticket.sla_due && (
+            <Badge size="small" appearance="filled" color={slaDueColor(ticket.sla_due.remaining_days)} title={ticket.sla_due.name}>
+              {slaDueLabel(ticket.sla_due.remaining_days)}
+            </Badge>
+          )}
+        </span>
       </div>
       <div className={s.body}>
         <Text weight="semibold" size={300} className={s.title}>#{ticket.id} · {ticket.title}</Text>

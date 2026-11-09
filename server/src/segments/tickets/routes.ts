@@ -17,6 +17,7 @@ import {
   primaryRole,
   ticketAttachment,
   ticketEvents,
+  withSlaDue,
   type Ticket,
   type TicketEvent,
 } from "./service";
@@ -33,6 +34,12 @@ const serializeTicket = (t: Ticket, domain: string) => ({
   is_duplicate: !!t.is_duplicate,
 });
 const serializeEvent = (e: TicketEvent) => ({ ...e, ai_processed: !!e.ai_processed });
+
+// sla_due only for callers who may read SLAs (D36); everyone else gets null.
+async function slaDue<T extends Ticket & { events: TicketEvent[] }>(c: any, rows: T[]) {
+  if (!(await readableGrants(c, "sla:read")).length) return rows.map((t) => ({ ...t, sla_due: null }));
+  return withSlaDue(c.env, rows, new Date());
+}
 
 const createSchema = z.object({
   title: z.string().min(1),
@@ -76,7 +83,7 @@ tickets.get("/", requirePermission("ticket:read"), async (c) => {
   const grants = await readableGrants(c, "ticket:read");
   const account = c.get("account");
   const res = await listTickets(c.env, grants, account.id, parsed.data);
-  const data = res.data.map((t) => ({ ...serializeTicket(t, c.env.TICKET_EMAIL_DOMAIN), events: t.events.map(serializeEvent) }));
+  const data = (await slaDue(c, res.data)).map((t) => ({ ...serializeTicket(t, c.env.TICKET_EMAIL_DOMAIN), events: t.events.map(serializeEvent) }));
   return c.json({ data, page: res.page, total: res.total });
 });
 
@@ -104,8 +111,8 @@ tickets.post(
 tickets.get("/:id", requirePermission("ticket:read", ticketScope), async (c) => {
   const t = await getTicket(c.env, idParam(c));
   if (!t) notFound("no such ticket");
-  const events = await ticketEvents(c.env, t!.id);
-  return c.json({ ...serializeTicket(t!, c.env.TICKET_EMAIL_DOMAIN), events: events.map(serializeEvent) });
+  const row = (await slaDue(c, [{ ...t!, events: await ticketEvents(c.env, t!.id) }]))[0]!;
+  return c.json({ ...serializeTicket(row, c.env.TICKET_EMAIL_DOMAIN), events: row.events.map(serializeEvent) });
 });
 
 tickets.get("/:id/events", requirePermission("ticket:read", ticketScope), async (c) => {

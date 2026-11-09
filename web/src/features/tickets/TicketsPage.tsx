@@ -27,15 +27,16 @@ import { Can } from "../../auth/Can";
 import { Query } from "../../lib/Query";
 import type { Account, TicketDetail } from "../../api/types";
 import { CollapsibleGroup, type GroupTone } from "../../components/CollapsibleGroup";
-import { CATEGORIES, humanize, isTerminal } from "../../components/ticketDisplay";
+import { CATEGORIES, humanize, isTerminal, slaDueLabel } from "../../components/ticketDisplay";
 import { TicketCard } from "../../components/TicketCard";
 import { TicketDrawer } from "../../components/TicketDrawer";
 import { useAccounts, useBuildings } from "../directory/api";
 import { NewTicketDialog } from "./NewTicketPage";
 import { useTickets } from "./api";
 
-const INACTIVE_DAYS = 14;
-type Bucket = "inactive" | "open" | "pending" | "completed";
+// Working days left on the soonest SLA at or below which a ticket is urgent (D36).
+const URGENT_DAYS = 1;
+type Bucket = "urgent" | "open" | "pending" | "completed";
 
 // case- and accent-insensitive; "José" matches "jose".
 const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
@@ -46,15 +47,15 @@ function lastActivityMs(t: TicketDetail): number {
   return new Date((evs.length ? evs[evs.length - 1].at : t.created_at) ?? "").getTime();
 }
 
-// resolved/closed → completed; else 14+ days idle → inactive; else by status.
+// resolved/closed → completed; else SLA breached or nearly due → urgent; else by status.
 function bucketOf(t: TicketDetail): Bucket {
   if (isTerminal(t.status)) return "completed";
-  if (Date.now() - lastActivityMs(t) > INACTIVE_DAYS * 86_400_000) return "inactive";
+  if (t.sla_due && t.sla_due.remaining_days <= URGENT_DAYS) return "urgent";
   return t.status === "pending_3rd_party" ? "pending" : "open";
 }
 
 const GROUPS: { key: Bucket; title: string; tone: GroupTone; icon: ReactNode; defaultOpen: boolean }[] = [
-  { key: "inactive", title: "Inactive — no activity in 14+ days", tone: "danger", icon: <Warning20Filled />, defaultOpen: true },
+  { key: "urgent", title: "Urgent — SLA breached or due within 1 working day", tone: "danger", icon: <Warning20Filled />, defaultOpen: true },
   { key: "open", title: "Open — requires response", tone: "neutral", icon: <Circle20Regular />, defaultOpen: true },
   { key: "pending", title: "Pending — awaiting resident / contractor", tone: "warning", icon: <Clock20Regular />, defaultOpen: true },
   { key: "completed", title: "Completed", tone: "success", icon: <CheckmarkCircle20Filled />, defaultOpen: false },
@@ -133,13 +134,11 @@ export function TicketsPage() {
             return true;
           });
 
-          // ponytail: SLA is provisional (SlaPanel), so inactivity is the proxy
-          // for "at risk" until the real SLA clock lands.
           const attention = res.data.filter((t) => {
             const b = bucketOf(t);
-            return b === "open" || b === "inactive";
+            return b === "open" || b === "urgent";
           }).length;
-          const atRisk = res.data.filter((t) => bucketOf(t) === "inactive").length;
+          const atRisk = res.data.filter((t) => bucketOf(t) === "urgent").length;
 
           return (
             <>
@@ -147,12 +146,12 @@ export function TicketsPage() {
                 <Card className={`${s.stat} ${s.attention}`}>
                   <Text className={s.statNum}>{attention}</Text>
                   <Text weight="semibold">Need your attention</Text>
-                  <Text size={200}>Open or stalled tickets awaiting a response.</Text>
+                  <Text size={200}>Open or urgent tickets awaiting a response.</Text>
                 </Card>
                 <Card className={`${s.stat} ${s.sla}`}>
                   <Text className={s.statNum}>{atRisk}</Text>
                   <Text weight="semibold">Immediate follow-up</Text>
-                  <Text size={200}>No activity in {INACTIVE_DAYS}+ days — SLA at risk.</Text>
+                  <Text size={200}>SLA breached or due within 1 working day.</Text>
                 </Card>
               </div>
 
@@ -238,7 +237,7 @@ export function TicketsPage() {
 function Buckets({ tickets, onOpen, onExpand }: { tickets: TicketDetail[]; onOpen: (t: TicketDetail) => void; onExpand: (t: TicketDetail) => void }) {
   const s = useStyles();
   const byBucket = useMemo(() => {
-    const m: Record<Bucket, TicketDetail[]> = { inactive: [], open: [], pending: [], completed: [] };
+    const m: Record<Bucket, TicketDetail[]> = { urgent: [], open: [], pending: [], completed: [] };
     for (const t of tickets) m[bucketOf(t)].push(t);
     return m;
   }, [tickets]);
@@ -287,6 +286,16 @@ function Grid({
       { headerName: "Building", flex: 1, valueGetter: (p) => buildingName(p.data?.building_id) },
       { headerName: "Category", flex: 1, valueGetter: (p) => humanize(p.data?.category) },
       { headerName: "Status", flex: 1, valueGetter: (p) => humanize(p.data?.status) },
+      {
+        headerName: "SLA due",
+        flex: 1,
+        valueGetter: (p) => p.data?.sla_due?.remaining_days ?? null,
+        valueFormatter: (p) => (p.value == null ? "" : slaDueLabel(p.value)),
+        tooltipValueGetter: (p) => p.data?.sla_due?.name ?? "",
+        // No running SLA sorts after everything, in either direction.
+        comparator: (a, b, _na, _nb, desc) =>
+          a == null && b == null ? 0 : a == null ? (desc ? -1 : 1) : b == null ? (desc ? 1 : -1) : a - b,
+      },
       {
         headerName: "Last activity",
         flex: 1,

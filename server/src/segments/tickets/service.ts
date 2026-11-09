@@ -3,6 +3,7 @@ import { all, one, run } from "../../db/client";
 import type { Grant } from "../../db/client";
 import type { TicketStatus } from "../../../../common/tickets";
 import { layout, paragraphs, render, sendMail } from "../../../../common/mail";
+import { nextDue, type SlaDef, type SlaEvent } from "../../lib/sla";
 
 export interface Ticket {
   id: number;
@@ -130,6 +131,16 @@ export async function listTickets(
     page: f.page,
     total: total?.n ?? 0,
   };
+}
+
+// Each ticket's soonest running SLA (D21, D36); resolved/closed tickets have none.
+export async function withSlaDue<T extends Ticket & { events: SlaEvent[] }>(env: Env, tickets: T[], now: Date) {
+  const slas = await all<SlaDef & { name: string }>(env.DB, "SELECT * FROM slas WHERE active = 1 ORDER BY id");
+  const nowIso = now.toISOString();
+  return tickets.map((t) => ({
+    ...t,
+    sla_due: t.status === "resolved" || t.status === "closed" ? null : nextDue(slas, t, nowIso),
+  }));
 }
 
 export async function getTicket(env: Env, id: number): Promise<Ticket | null> {

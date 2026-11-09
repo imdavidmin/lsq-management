@@ -30,3 +30,11 @@ export const Default: Story = { args: { ticket: base } };
 export const NeedsContractor: Story = {
   args: { ticket: { ...base, status: "pending_3rd_party", needs_contractor: true } },
 };
+
+export const SlaDueSoon: Story = {
+  args: { ticket: { ...base, sla_due: { sla_id: 2, name: "Acknowledged", remaining_days: 1 } } },
+};
+
+export const SlaOverdue: Story = {
+  args: { ticket: { ...base, needs_contractor: true, sla_due: { sla_id: 4, name: "Enquiry to contractor", remaining_days: -2 } } },
+};

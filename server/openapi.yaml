@@ -1510,6 +1510,18 @@ components:
         created_at: { type: string, format: date-time }
         resolved_at: { type: string, format: date-time, nullable: true }
         closed_at: { type: string, format: date-time, nullable: true }
+        sla_due:
+          type: object
+          nullable: true
+          description: >-
+            Soonest running SLA (D21, D36), on list and detail reads. Null when
+            none is running, the ticket is resolved/closed, or the caller lacks
+            `sla:read`.
+          properties:
+            sla_id: { type: integer }
+            name: { type: string }
+            remaining_days: { type: integer, description: Working days left; negative = overdue }
+          required: [sla_id, name, remaining_days]
     TicketCreate:
       type: object
       required: [title, description]

@@ -80,3 +80,21 @@ export function ticketPasses(slas: SlaDef[], t: SlaTicket, now: string): boolean
     .filter((i) => i.outcome !== "running");
   return done.length ? done.every((i) => i.outcome === "met") : null;
 }
+
+// The open instance nearest its budget, for the tickets list: working days left
+// (negative = overdue). Null when nothing is running.
+export function nextDue(
+  slas: (SlaDef & { name: string })[],
+  t: SlaTicket,
+  now: string
+): { sla_id: number; name: string; remaining_days: number } | null {
+  let best: { sla_id: number; name: string; remaining_days: number } | null = null;
+  for (const s of slas.filter((s) => applies(s, t))) {
+    for (const i of instances(s, t, now)) {
+      if (i.stop_at) continue;
+      const remaining = s.budget_days - i.days;
+      if (!best || remaining < best.remaining_days) best = { sla_id: s.id, name: s.name, remaining_days: remaining };
+    }
+  }
+  return best;
+}

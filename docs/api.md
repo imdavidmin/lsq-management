@@ -52,6 +52,10 @@ target (D18). `public` = no session (login only).
 | GET    | `/tickets/{id}/attachments/{attachmentId}` | `ticket:read` | Download an email attachment / original `.eml` | D28 |
 | POST   | `/tickets/{id}/markers` | `ticket:update` | Record "contractor attended" + notes             | D21          |
 
+List and detail reads carry `sla_due`: the ticket's soonest running SLA and its
+working days left (negative = overdue), or null. Only callers with `sla:read`
+get it filled in (D36).
+
 ## directory · identity, access, external parties
 
 | Method | Path                       | Perm             | Purpose                                              | UJ           |

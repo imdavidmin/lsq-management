@@ -2821,6 +2821,13 @@ export interface components {
             resolved_at?: string | null;
             /** Format: date-time */
             closed_at?: string | null;
+            /** @description Soonest running SLA (D21, D36), on list and detail reads. Null when none is running, the ticket is resolved/closed, or the caller lacks `sla:read`. */
+            sla_due?: {
+                sla_id: number;
+                name: string;
+                /** @description Working days left; negative = overdue */
+                remaining_days: number;
+            } | null;
         };
         TicketCreate: {
             title: string;

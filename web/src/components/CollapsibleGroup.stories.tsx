@@ -12,7 +12,7 @@ type Story = StoryObj<typeof CollapsibleGroup>;
 
 export const Danger: Story = {
   args: {
-    title: "Inactive — no activity in 14+ days",
+    title: "Urgent — SLA breached or due within 1 working day",
     count: 2,
     tone: "danger",
     icon: <Warning20Filled />,

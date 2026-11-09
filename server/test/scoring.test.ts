@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import { app } from "../src/app";
 import { login } from "./helpers";
 import { KIND_VALUES, STOP_KINDS, type SlaKind } from "../../common/sla";
-import { instances, ticketPasses, type SlaDef, type SlaTicket } from "../src/lib/sla";
+import { instances, nextDue, ticketPasses, type SlaDef, type SlaTicket } from "../src/lib/sla";
 
 interface SlaRow {
   name: string;
@@ -221,6 +221,18 @@ describe("SLA evaluator", () => {
     expect(ticketPasses([enquiry], t, "2026-12-01")).toBe(true);
     expect(ticketPasses([enquiry, reply], t, "2026-12-01")).toBe(false); // reply took 4 wd
     expect(ticketPasses([enquiry, reply], { ...t, needs_contractor: 0 }, "2026-12-01")).toBeNull(); // doesn't apply
+  });
+
+  it("nextDue: the open instance with the fewest working days left, negative once overdue (D36)", () => {
+    const slas = [
+      { ...def({ id: 2 }), name: "Acknowledged" },
+      { ...def({ id: 6, start_on: "marker", start_value: "enquiry_sent", budget_days: 6, repeats: 1 }), name: "Chase" },
+    ];
+    const t = ticket("2026-11-02T09:00Z", [ev("2026-11-02T10:00Z", "system", "marker", "enquiry_sent")]);
+    expect(nextDue(slas, t, "2026-11-03T12:00Z")).toEqual({ sla_id: 2, name: "Acknowledged", remaining_days: 1 });
+    expect(nextDue(slas, t, "2026-11-05T12:00Z")).toMatchObject({ sla_id: 2, remaining_days: -1 });
+    // A staff reply stops both; nothing left running.
+    expect(nextDue(slas, { ...t, events: [...t.events, ev("2026-11-03T09:00Z", "agent")] }, "2026-11-05T12:00Z")).toBeNull();
   });
 });
 
