@@ -7,7 +7,7 @@
   "observability": { "enabled": true },
   // <ticketId>@TICKET_EMAIL_DOMAIN threads (D25); <alias>@MAIL_DOMAIN forwards
   // to the alias's destinations (D26); anything else is rejected. Ticket mail
-  // from new@TICKET_EMAIL_DOMAIN is our own triage notice and is dropped (D32).
+  // from new@ or noreply@TICKET_EMAIL_DOMAIN is our own (D32, D33) and is dropped.
   "vars": {
     "TICKET_EMAIL_DOMAIN": "ticket.lansburysquare.co.uk",
     "MAIL_DOMAIN": "lansburysquare.co.uk"

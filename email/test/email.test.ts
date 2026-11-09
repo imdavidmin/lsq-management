@@ -96,13 +96,15 @@ describe("email Worker", () => {
     expect(f.sent.length).toBe(0); // aliases never touch the ticket queue
   });
 
-  it("drops our own notice CCing a ticket address without logging it (D32)", async () => {
+  it("drops our own notice and comment mail at a ticket address without logging it (D32, D33)", async () => {
     const f = fakes();
-    const own = craft("bounce@mta.lansburysquare.co.uk", `1234@${DOMAIN}`, "[#1234] Leak", "notice", {
-      from: `Lansbury Square <new@${DOMAIN}>`,
-    });
-    await worker.email!(own.message, f.env);
-    expect(own.reject()).toBeNull(); // accepted, not bounced
+    for (const local of ["new", "noreply"]) {
+      const own = craft("bounce@mta.lansburysquare.co.uk", `1234@${DOMAIN}`, "[#1234] Leak", "notice", {
+        from: `Lansbury Square <${local}@${DOMAIN}>`,
+      });
+      await worker.email!(own.message, f.env);
+      expect(own.reject()).toBeNull(); // accepted, not bounced
+    }
     expect(f.sent.length).toBe(0);
 
     // Other mail from our own sending address is still logged.

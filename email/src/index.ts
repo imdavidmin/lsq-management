@@ -75,8 +75,9 @@ export default {
     const ticketId = Number(localPart);
     if (domain !== env.TICKET_EMAIL_DOMAIN || !Number.isInteger(ticketId) || ticketId <= 0)
       return message.setReject("unrecognised ticket address");
-    // The triage notice comes from new@ and CCs the ticket; it isn't a comment (D32).
-    if (headerAddress(message.headers.get("from")) === `new@${env.TICKET_EMAIL_DOMAIN}`) return;
+    // Our own mail (triage notice D32, UI comment D33) is already on the ticket.
+    const sender = headerAddress(message.headers.get("from"));
+    if (["new", "noreply"].some((l) => sender === `${l}@${env.TICKET_EMAIL_DOMAIN}`)) return;
 
     const exists = await env.DB.prepare("SELECT 1 FROM tickets WHERE id = ?").bind(ticketId).first();
     if (!exists) return message.setReject("no such ticket");

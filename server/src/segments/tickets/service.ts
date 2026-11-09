@@ -2,6 +2,7 @@ import type { Env } from "../../env";
 import { all, one, run } from "../../db/client";
 import type { Grant } from "../../db/client";
 import type { TicketStatus } from "../../../../common/tickets";
+import { sendMail } from "../../../../common/mail";
 
 export interface Ticket {
   id: number;
@@ -359,4 +360,29 @@ export async function addComment(
     source: "ui",
   });
   return (await getEvent(env, id))!;
+}
+
+// A UI comment by someone else goes to the ticket's creator by email (D33).
+export async function emailCreator(env: Env, ticket: Ticket, commenterId: number, body: string, origin: string) {
+  if (ticket.created_by == null || ticket.created_by === commenterId) return;
+  const creator = await one<{ email: string }>(
+    env.DB,
+    "SELECT email FROM accounts WHERE id = ? AND active = 1 AND erased_at IS NULL AND email IS NOT NULL",
+    ticket.created_by
+  );
+  if (!creator) return;
+  try {
+    await sendMail(env, {
+      from: `noreply@${env.TICKET_EMAIL_DOMAIN}`, // dropped if it ever reaches a ticket address
+      to: [creator.email],
+      replyTo: `${ticket.id}@${env.TICKET_EMAIL_DOMAIN}`,
+      subject: `Re: ${ticket.title} [#${ticket.id}]`,
+      text:
+        `${body}\n\n---\n` +
+        `Reply to this email to add to ticket #${ticket.id}, or view it at ${origin}/tickets/${ticket.id}.\n` +
+        `This is an automated message.`,
+    });
+  } catch (err) {
+    console.error(`[mail] comment on #${ticket.id} not sent`, err);
+  }
 }

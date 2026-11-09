@@ -38,6 +38,7 @@ the lazy option here, and avoids per-seat licences.
 | `<name>@lansburysquare.co.uk` | zone catch-all → `lsq-email`, which looks the alias up in the `config` row `mail_aliases` (a JSON doc) and forwards a copy to each verified destination (D26). Aliases are managed by the board via `/api/mail-aliases` |
 | anything else on either domain | catch-all → `lsq-email`, which rejects it |
 | outbound `ops@lansburysquare.co.uk` | MailerSend (`MAIL_FROM`, display name `MAIL_FROM_NAME`) |
+| outbound `new@` / `noreply@ticket.lansburysquare.co.uk` | MailerSend: triage notices (D32) / UI comments to the creator (D33). The `email` Worker drops ticket mail from either |
 
 **Records.** Rows marked *managed* were added by Email Routing; don't hand-edit them.
 

@@ -449,7 +449,10 @@ export interface paths {
             };
         };
         put?: never;
-        /** Add a comment / update (UI, UJ-02) */
+        /**
+         * Add a comment / update (UI, UJ-02)
+         * @description When the commenter isn't the ticket's creator, the comment is emailed to the creator from noreply@, with the ticket address as Reply-To (D33).
+         */
         post: {
             parameters: {
                 query?: never;

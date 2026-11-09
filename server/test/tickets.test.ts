@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { app } from "../src/app";
 import { login } from "./helpers";
 
@@ -158,6 +158,48 @@ describe("tickets", () => {
     expect(ev.type).toBe("comment");
     expect(ev.source).toBe("ui");
     expect(ev.body).toBe("any update");
+  });
+
+  it("emails a UI comment to the creator when someone else posts it (D33)", async () => {
+    const mail: any[] = [];
+    let status = 202;
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      mail.push(JSON.parse(String(init?.body)));
+      return new Response(null, { status });
+    });
+    const send = (path: string, cookie: string, b: unknown) =>
+      app.request(
+        path,
+        { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify(b) },
+        { ...env, MAILERSEND_API_KEY: "mlsn.test" }
+      );
+    const res = await login("res-n@lsq.test", "resident", "unit", 101);
+    const agent = await login("ag-n@lsq.test", "agent", "estate", null);
+    const t = (await (await post("/api/tickets", res.cookie, { title: "Leak", description: "y", unit_id: 101 })).json()) as any;
+
+    expect((await send(`/api/tickets/${t.id}/events`, agent.cookie, { body: "Can you send a photo?" })).status).toBe(201);
+    expect(mail).toHaveLength(1);
+    const address = `${t.id}@ticket.lansburysquare.co.uk`;
+    expect(mail[0]).toMatchObject({
+      from: { email: "noreply@ticket.lansburysquare.co.uk" },
+      to: [{ email: "res-n@lsq.test" }],
+      reply_to: { email: address },
+      subject: `Re: Leak [#${t.id}]`,
+    });
+    expect(mail[0].cc).toBeUndefined(); // the comment is already on the ticket
+    expect(mail[0].text.startsWith("Can you send a photo?")).toBe(true);
+
+    // The creator's own comment and a marker aren't emailed.
+    await send(`/api/tickets/${t.id}/events`, res.cookie, { body: "Will do" });
+    await send(`/api/tickets/${t.id}/markers`, agent.cookie, { marker: "attended", notes: "Looked at it" });
+    expect(mail).toHaveLength(1);
+
+    // MailerSend failing doesn't lose the comment.
+    status = 500;
+    expect((await send(`/api/tickets/${t.id}/events`, agent.cookie, { body: "Still there?" })).status).toBe(201);
+    spy.mockRestore();
+    const events = (await (await req(`/api/tickets/${t.id}/events`, agent.cookie)).json()) as any[];
+    expect(events.some((e) => e.body === "Still there?")).toBe(true);
   });
 
   it("records an attended marker with notes; residents can't, other markers are rejected", async () => {

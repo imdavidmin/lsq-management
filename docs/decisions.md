@@ -24,6 +24,9 @@ address is the ticket number, so no subject parsing.
 **Revision (D32):** mail from a *known account* to `management@` or
 `concierge@` also opens a ticket. Unknown senders still can't.
 
+**Revision (D33):** a UI comment by someone other than the creator is emailed
+to the creator, with the ticket address as Reply-To.
+
 ### D4 — Sender resolution is a lookup, not an identity system
 
 Order: `accounts` email → `senders` email → `senders` domain (→ organization).
@@ -506,3 +509,25 @@ before. When the sender is a known account (primary or extra address, D29), the
   positive costs one unneeded email, while a missed emergency costs much more.
   The prompt tells the model to treat everyday nuisance such as music or
   footsteps as a plain `complaint`.
+
+### D33 — A UI comment by someone other than the creator is emailed to the creator
+
+When a comment is posted in the UI by anyone other than the ticket's creator,
+the creator gets it by email:
+- **To:** the creator's `accounts.email` only (D17). Nobody is emailed when the
+  creator comments on their own ticket, or when the creator is inactive, erased
+  or has no address.
+- **From** `noreply@ticket.lansburysquare.co.uk`, **Reply-To** the ticket
+  address, subject `Re: <title> [#<id>]`. The ticket address is not in CC.
+- **Markers** (e.g. *attended*) aren't emailed. Only comments are.
+- **Failure:** a send failure is logged. The comment is already saved and the
+  request still succeeds.
+
+**Why:**
+- **No CC:** the comment is already on the ticket, so a copy to the ticket
+  address would only come back as a duplicate. Reply-To is enough for the
+  creator's reply to thread (D3). The `email` Worker also drops ticket mail
+  from `noreply@`, as it does for `new@` (D32), in case a client copies it in.
+- **Creator only:** they raised it and are the one waiting on an answer. Wider
+  recipient lists (everyone on the thread) and internal notes that aren't
+  emailed are deferred until there's a real need (D8).
