@@ -17,8 +17,6 @@ export interface Env {
   // secrets
   MAILERSEND_API_KEY?: string;
   CF_EMAIL_TOKEN?: string; // registers Email Routing destination addresses (D26)
-  // Dev-only (.dev.vars): auto-authenticate as this email, skipping OTP. See session.ts.
-  DEV_LOGIN_EMAIL?: string;
 }
 
 // Hono variables set by middleware and read by handlers.

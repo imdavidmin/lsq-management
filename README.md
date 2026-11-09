@@ -104,20 +104,16 @@ npm run be               # API Worker (wrangler dev)
 npm run fe               # Vite frontend (second terminal)
 ```
 
-**Local login bypass.** Skip the email OTP by creating `.dev.vars` in the repo
-root (gitignored):
+**Local login.** Sign in with an email code, as on the live site. Create a
+`.dev.vars` in the repo root (gitignored); it can be empty:
 
 ```
-DEV_LOGIN_EMAIL=alice@lansburysquare.co.uk
+# shadows .env so `wrangler dev` logs mail instead of sending it
 ```
 
-`.dev.vars` also shadows `.env`. `.env` holds the live `MAILERSEND_API_KEY`,
-so without a `.dev.vars`, `wrangler dev` would send real mail instead of
-logging OTPs to the console.
-
-Restart `npm run be`; every request is signed in as that email. The account is
-created if missing and always gets a board/estate grant, so it sees everything
-(see `server/src/middleware/session.ts`). Seeded accounts:
+`.dev.vars` shadows `.env`. `.env` holds the live `MAILERSEND_API_KEY`, so
+without a `.dev.vars`, `wrangler dev` would send real mail. With it, the login
+code is printed in the `npm run be` console (`[mail:dev]`). Seeded accounts:
 
 | Email                        | Role in dev seed   |
 | ---------------------------- | ------------------ |
@@ -125,9 +121,6 @@ created if missing and always gets a board/estate grant, so it sees everything
 | `dave@dwellent.com`          | agent, estate      |
 | `bob@example.com`            | resident, unit 1   |
 | `carol@example.com`          | resident, unit 4   |
-
-To see a single role's real view, leave `DEV_LOGIN_EMAIL` unset and log in
-normally. Tests blank the variable, so the bypass never leaks into them.
 
 ```sh
 npm test                 # vitest on real D1 (miniflare)
