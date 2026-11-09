@@ -13,6 +13,7 @@ declare module "cloudflare:test" {
     TICKET_EMAIL_DOMAIN: string;
     MAIL_FROM: string;
     MAIL_FROM_NAME: string;
+    APP_URL: string;
     BOARD_EMAIL: string;
     MAIL_DOMAIN: string;
     CF_ACCOUNT_ID: string;

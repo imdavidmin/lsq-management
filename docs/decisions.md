@@ -469,6 +469,9 @@ before. When the sender is a known account (primary or extra address, D29), the
   sent to. The ticket address is in CC, so replies thread (D3). It's sent from
   `new@ticket.lansburysquare.co.uk` and isn't logged: the `email` Worker drops
   ticket mail whose `From:` header is that address.
+
+  **Revision (D34):** the notice is now the sender's own email re-sent with a
+  banner, with the sender as Reply-To.
 - **Urgent:** the sender gets the auto-reply in the `config` row
   `urgent_reply`, which points to 999, the police (101) and Tower Hamlets
   Council. Board and admin edit it under *Directory → Email forwarding*
@@ -531,3 +534,52 @@ the creator gets it by email:
 - **Creator only:** they raised it and are the one waiting on an answer. Wider
   recipient lists (everyone on the thread) and internal notes that aren't
   emailed are deferred until there's a real need (D8).
+
+### D34 — Triage re-sends the sender's email with a banner, in place of the notice
+
+The D32 notice is replaced by a copy of the sender's email to the same people:
+- **From:** `"<sender name> via Lansbury Square" <new@ticket.lansburysquare.co.uk>`.
+  **Reply-To:** the sender. **CC:** the ticket address. **Subject:**
+  `[#<id>] <original subject>`.
+- **Banner** at the top: the ticket was created automatically, its category,
+  a link to it in the app, and "Use Reply all to log replies automatically on
+  this ticket." It doesn't mention the urgent auto-reply.
+- **Body:** the original email as sent (its HTML, else its text). Attachments
+  aren't re-sent; the banner says they're on the ticket.
+- The plain Cloudflare forward of the original still goes out first (D32).
+
+**Why:**
+- **Reply all does the right thing:** mail clients answer the Reply-To, so
+  Reply all goes to the sender plus the ticket address and the reply is
+  logged (D3). Plain Reply reaches the sender only, hence the banner wording.
+- **Not From the sender:** sending as a gmail.com or hotmail.com address fails
+  their DMARC, so it would be spam-foldered or refused, and MailerSend only
+  sends from our domain. "via" names it as the sender, the way Google Groups
+  does.
+- **Keep the free forward:** it's delivered before triage runs, so a model,
+  database or queue failure never loses mail. The cost is two emails per
+  message, the same count as D32's notice, and the `[#id]` subject marks the
+  one to reply to.
+- **No attachments:** they're in the forward and on the ticket. Re-sending
+  them would hit MailerSend's 25 MB limit and double the traffic.
+- **Relaying the sender's text:** D32 sent fixed templates only. This copy goes
+  to the same people the plain forward already reaches, so it exposes no one
+  to anything new. The model still only returns labels.
+
+### D35 — System mail is HTML with a plain-text part
+
+Every email we send has an HTML part and a plain-text part with the same
+content. The HTML comes from templates in `common/email-templates/`: one
+layout (logo header, white card, footer) plus one file per email. `{{x}}` is
+escaped and `{{{x}}}` takes HTML the code has already built. The login code is shown large in its own box and starts the
+subject line. Links to tickets and the logo use the `APP_URL` var (the live
+site), because cron and queue Workers have no request to take an origin from.
+
+**Why:**
+- **Readable at a glance:** the code is what people look for, so it's large and
+  also in the subject, which shows in phone notifications.
+- **PNG logo:** Gmail and Outlook don't display SVG, so `web/public/logo-email.png`
+  is a PNG copy of the logo, linked rather than attached. Clients that block
+  images still show the name beside it.
+- **Inline styles and tables:** mail clients drop `<style>` blocks and modern
+  layout. Everything a user wrote is escaped before it goes into the HTML.

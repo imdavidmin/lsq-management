@@ -9,6 +9,7 @@ export interface Env {
   TICKET_EMAIL_DOMAIN: string;
   MAIL_FROM: string;
   MAIL_FROM_NAME: string;
+  APP_URL: string; // live site, for links and the logo in mail (D35)
   BOARD_EMAIL: string;
   MAIL_DOMAIN: string; // board-provisioned aliases (D26)
   CF_ACCOUNT_ID: string;

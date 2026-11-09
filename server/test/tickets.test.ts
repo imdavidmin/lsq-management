@@ -188,6 +188,13 @@ describe("tickets", () => {
     });
     expect(mail[0].cc).toBeUndefined(); // the comment is already on the ticket
     expect(mail[0].text.startsWith("Can you send a photo?")).toBe(true);
+    expect(mail[0].html).toContain(`href="https://lansburysquare.co.uk/tickets/${t.id}"`);
+
+    // Comment text is escaped in the HTML version.
+    await send(`/api/tickets/${t.id}/events`, agent.cookie, { body: "<script>x</script> & more" });
+    expect(mail[1].html).toContain("&lt;script&gt;x&lt;/script&gt; &amp; more");
+    expect(mail[1].html).not.toContain("<script>");
+    mail.length = 1;
 
     // The creator's own comment and a marker aren't emailed.
     await send(`/api/tickets/${t.id}/events`, res.cookie, { body: "Will do" });

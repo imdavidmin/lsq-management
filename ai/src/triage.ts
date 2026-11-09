@@ -1,5 +1,5 @@
 import PostalMime from "postal-mime";
-import { sendMail } from "../../common/mail";
+import { esc, layout, paragraphs, render, sendMail } from "../../common/mail";
 import type { TriageEmail } from "../../common/queue";
 import { CATEGORIES } from "../../common/tickets";
 import { all, one } from "./db";
@@ -133,20 +133,36 @@ export async function triageInbound(env: Env, msg: TriageEmail): Promise<void> {
   const aliases = await one<{ value: string }>(env.DB, "SELECT value FROM config WHERE key = 'mail_aliases'");
   const team: string[] = aliases ? (JSON.parse(aliases.value)[msg.inbox] ?? []) : [];
   if (team.length) {
+    // The sender's own email, re-sent with a banner: Reply all reaches them and logs on the ticket (D34).
+    const url = `${env.APP_URL}/tickets/${ticketId}`;
+    const label = category && category.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+    const lead = (b: (s: string) => string) => (label ? `A new ticket in ${b(label)}` : "A new unclassified ticket");
+    const howTo = "Use Reply all to log replies automatically on this ticket.";
+    const filesNote = files.length ? " Attachments are on the ticket." : "";
+    const top = render("triage-banner", { lead: lead((l) => `<b>${esc(l)}</b>`), url, ticket_id: ticketId, files_note: filesNote });
+    // Inside the original's <body> when it has one, so the banner renders first.
+    const original = email.html ?? paragraphs(body);
+    const html = /<body[^>]*>/i.test(original) ? original.replace(/<body[^>]*>/i, (m) => m + top) : top + original;
     await sendMail(env, {
       from: `new@${env.TICKET_EMAIL_DOMAIN}`, // the email Worker drops this when it comes back via CC
+      fromName: `${email.from?.name || msg.from} via ${env.MAIL_FROM_NAME}`,
       to: team,
       cc: [ticketAddress],
+      replyTo: msg.from,
       subject: `[#${ticketId}] ${title}`,
       text:
-        `Ticket #${ticketId} was opened from an email by ${msg.from} to ${msg.inbox}@${env.MAIL_DOMAIN}.\n` +
-        `The original email was forwarded to you separately.\n\n` +
-        `Category: ${category ?? "unclassified"} (set automatically, so please correct it on the ticket if it's wrong)\n` +
-        (advice ? `It looked urgent, so the sender was sent the urgent auto-reply.\n` : "") +
-        `\nReply with ${ticketAddress} in copy and your reply is logged on the ticket.`,
+        `${lead((l) => l)} was created automatically from this email: ticket #${ticketId}.\n${howTo}${filesNote}\n${url}\n\n` +
+        `---------- Original email from ${msg.from} to ${msg.inbox}@${env.MAIL_DOMAIN} ----------\n\n${body}`,
+      html,
     });
   }
   if (advice) {
-    await sendMail(env, { to: [msg.from], replyTo: ticketAddress, subject: `Re: ${title} [#${ticketId}]`, text: advice });
+    await sendMail(env, {
+      to: [msg.from],
+      replyTo: ticketAddress,
+      subject: `Re: ${title} [#${ticketId}]`,
+      text: advice,
+      html: layout(env, paragraphs(advice)),
+    });
   }
 }

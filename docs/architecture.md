@@ -38,7 +38,10 @@ the lazy option here, and avoids per-seat licences.
 | `<name>@lansburysquare.co.uk` | zone catch-all → `lsq-email`, which looks the alias up in the `config` row `mail_aliases` (a JSON doc) and forwards a copy to each verified destination (D26). Aliases are managed by the board via `/api/mail-aliases` |
 | anything else on either domain | catch-all → `lsq-email`, which rejects it |
 | outbound `ops@lansburysquare.co.uk` | MailerSend (`MAIL_FROM`, display name `MAIL_FROM_NAME`) |
-| outbound `new@` / `noreply@ticket.lansburysquare.co.uk` | MailerSend: triage notices (D32) / UI comments to the creator (D33). The `email` Worker drops ticket mail from either |
+| outbound `new@` / `noreply@ticket.lansburysquare.co.uk` | MailerSend: triage copies (D32, D34) / UI comments to the creator (D33). The `email` Worker drops ticket mail from either |
+
+All outbound mail is HTML plus plain text, from the templates in `common/email-templates/`;
+links and the logo use the `APP_URL` var (D35).
 
 **Records.** Rows marked *managed* were added by Email Routing; don't hand-edit them.
 
@@ -145,7 +148,8 @@ email to management@ / concierge@lansburysquare.co.uk
   → Workers AI (JSON mode) → {category, urgent}; failure → unclassified
   → one D1 batch: ticket (created_by = sender, classified_by = 'ai', unit if
     exactly one) + comment + attachments + classify event + advice comment if urgent
-  → notice from new@ticket… to the inbox's destinations, CC <id>@ticket…
+  → the sender's email re-sent with a banner (D34): From "<name> via …" <new@ticket…>,
+    Reply-To the sender, To the inbox's destinations, CC <id>@ticket…, subject [#<id>] …
     (the email Worker drops ticket mail From: new@, so it's never logged)
   → urgent → config 'urgent_reply' to the sender, Reply-To the ticket address
 ```

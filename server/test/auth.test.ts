@@ -100,8 +100,11 @@ describe("outbound mail (MailerSend)", () => {
     expect(sent[0]!.body).toMatchObject({
       from: { email: "ops@lansburysquare.co.uk", name: "Lansbury Square" },
       to: [{ email: "mail@lsq.test" }],
-      subject: expect.any(String),
+      subject: expect.stringMatching(/^\d{6} is your Lansbury Square login code$/),
       text: expect.stringMatching(/\d{6}/),
     });
+    const code = sent[0]!.body.subject.slice(0, 6);
+    expect(sent[0]!.body.html).toContain(`>${code}</div>`); // the large code block (D35)
+    expect(sent[0]!.body.html).toContain("https://lansburysquare.co.uk/logo-email.png");
   });
 });

@@ -147,7 +147,7 @@ tickets.post("/:id/events", requirePermission("ticket:comment", ticketScope), as
   if (!t) notFound("no such ticket");
   const account = c.get("account");
   const ev = await addComment(c.env, t!.id, account.id, primaryRole(c.get("grants")), text);
-  await emailCreator(c.env, t!, account.id, text, new URL(c.req.url).origin);
+  await emailCreator(c.env, t!, account.id, text);
   return c.json(serializeEvent(ev), 201);
 });
 

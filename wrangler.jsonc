@@ -17,6 +17,8 @@
     // Notifications/OTP sender (MailerSend); board mailbox for reports/chases.
     "MAIL_FROM": "ops@lansburysquare.co.uk",
     "MAIL_FROM_NAME": "Lansbury Square",
+    // Live site: logo and ticket links in outgoing mail (D35).
+    "APP_URL": "https://lansburysquare.co.uk",
     "BOARD_EMAIL": "board@lansburysquare.co.uk",
     // Main domain for board-provisioned forward aliases (D26), and the CF ids
     // the alias endpoint calls Email Routing with (token: secret CF_EMAIL_TOKEN).

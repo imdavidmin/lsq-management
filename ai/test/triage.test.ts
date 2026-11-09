@@ -21,6 +21,7 @@ function makeEnv(raw: Record<string, string>, ai: unknown) {
     MAIL_DOMAIN: "lansburysquare.co.uk",
     MAIL_FROM: "ops@lansburysquare.co.uk",
     MAIL_FROM_NAME: "Lansbury Square",
+    APP_URL: "https://lansburysquare.co.uk",
     MAILERSEND_API_KEY: "mlsn.test",
   } as any;
 }
@@ -87,11 +88,17 @@ describe("ai Worker — triage (D32)", () => {
     const address = `${t.id}@ticket.lansburysquare.co.uk`;
     expect(mail).toHaveLength(2);
     expect(mail[0]).toMatchObject({
-      from: { email: "new@ticket.lansburysquare.co.uk" }, // dropped when it returns via CC
+      // The sender's email re-sent with a banner (D34): Reply all → sender + ticket.
+      from: { email: "new@ticket.lansburysquare.co.uk", name: "res@lsq.test via Lansbury Square" },
       to: [{ email: "desk@gmail.com" }, { email: "night@gmail.com" }],
       cc: [{ email: address }],
+      reply_to: { email: "res@lsq.test" },
       subject: `[#${t.id}] Threats`,
     });
+    expect(mail[0].html).toContain(`A new ticket in <b>Complaint</b> was created automatically`);
+    expect(mail[0].html).toContain(`href="https://lansburysquare.co.uk/tickets/${t.id}"`);
+    expect(mail[0].html).toContain("Men are threatening residents in the lobby.");
+    expect(mail[0].text).toContain("Use Reply all to log replies automatically on this ticket.");
     expect(mail[1]).toMatchObject({
       from: { email: "ops@lansburysquare.co.uk" },
       to: [{ email: "res@lsq.test" }],

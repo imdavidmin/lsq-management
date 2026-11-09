@@ -42,7 +42,7 @@ directory.post("/accounts", requirePermission("account:manage"), async (c) => {
       .refine((a) => a.role_key !== "resident" || !!a.unit, { message: "a resident needs a unit" })
   );
   if (await svc.emailInUse(c.env, a.email)) conflict("email already exists");
-  const res = await svc.inviteAccount(c.env, { ...a, loginUrl: new URL(c.req.url).origin });
+  const res = await svc.inviteAccount(c.env, a);
   if ("error" in res) return badRequest(res.error);
   return c.json(serializeAccount(res), 201);
 });

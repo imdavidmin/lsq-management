@@ -2,7 +2,7 @@ import type { Env } from "../../env";
 import { all, one, run } from "../../db/client";
 import type { Grant } from "../../db/client";
 import type { TicketStatus } from "../../../../common/tickets";
-import { sendMail } from "../../../../common/mail";
+import { layout, paragraphs, render, sendMail } from "../../../../common/mail";
 
 export interface Ticket {
   id: number;
@@ -363,7 +363,7 @@ export async function addComment(
 }
 
 // A UI comment by someone else goes to the ticket's creator by email (D33).
-export async function emailCreator(env: Env, ticket: Ticket, commenterId: number, body: string, origin: string) {
+export async function emailCreator(env: Env, ticket: Ticket, commenterId: number, body: string) {
   if (ticket.created_by == null || ticket.created_by === commenterId) return;
   const creator = await one<{ email: string }>(
     env.DB,
@@ -371,16 +371,15 @@ export async function emailCreator(env: Env, ticket: Ticket, commenterId: number
     ticket.created_by
   );
   if (!creator) return;
+  const url = `${env.APP_URL}/tickets/${ticket.id}`;
   try {
     await sendMail(env, {
       from: `noreply@${env.TICKET_EMAIL_DOMAIN}`, // dropped if it ever reaches a ticket address
       to: [creator.email],
       replyTo: `${ticket.id}@${env.TICKET_EMAIL_DOMAIN}`,
       subject: `Re: ${ticket.title} [#${ticket.id}]`,
-      text:
-        `${body}\n\n---\n` +
-        `Reply to this email to add to ticket #${ticket.id}, or view it at ${origin}/tickets/${ticket.id}.\n` +
-        `This is an automated message.`,
+      text: `${body}\n\n---\nReply to this email to add to ticket #${ticket.id}, or view it at ${url}.`,
+      html: layout(env, render("comment", { body: paragraphs(body), url, ticket_id: ticket.id })),
     });
   } catch (err) {
     console.error(`[mail] comment on #${ticket.id} not sent`, err);

@@ -75,7 +75,7 @@ export default {
     const ticketId = Number(localPart);
     if (domain !== env.TICKET_EMAIL_DOMAIN || !Number.isInteger(ticketId) || ticketId <= 0)
       return message.setReject("unrecognised ticket address");
-    // Our own mail (triage notice D32, UI comment D33) is already on the ticket.
+    // Our own mail (triage copy D34, UI comment D33) is already on the ticket.
     const sender = headerAddress(message.headers.get("from"));
     if (["new", "noreply"].some((l) => sender === `${l}@${env.TICKET_EMAIL_DOMAIN}`)) return;
 

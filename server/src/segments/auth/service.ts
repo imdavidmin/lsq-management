@@ -2,7 +2,7 @@ import type { Env } from "../../env";
 import { all, one, run } from "../../db/client";
 import type { Account } from "../../db/client";
 import { otpCode, randomToken, sha256hex } from "../../lib/crypto";
-import { sendMail } from "../../../../common/mail";
+import { layout, render, sendMail } from "../../../../common/mail";
 
 const OTP_TTL_MIN = 10;
 const OTP_MAX_ATTEMPTS = 5;
@@ -38,8 +38,9 @@ export async function requestOtp(env: Env, email: string): Promise<void> {
   );
   await sendMail(env, {
     to: [account.email],
-    subject: "Your LSQ login code",
-    text: `Your login code is ${code}. It expires in ${OTP_TTL_MIN} minutes.`,
+    subject: `${code} is your Lansbury Square login code`,
+    text: `Your login code is ${code}.\n\nIt expires in ${OTP_TTL_MIN} minutes. If you didn't ask for it, you can ignore this email.`,
+    html: layout(env, render("otp", { code, minutes: OTP_TTL_MIN })),
   });
 }
 

@@ -2,7 +2,19 @@ import type { Env } from "../env";
 import { all, run } from "../db/client";
 import { applies, instances, type SlaDef, type SlaEvent, type SlaTicket } from "../lib/sla";
 import { isWorkingDay, workingDaysBetween } from "../lib/workdays";
-import { sendMail } from "../../../common/mail";
+import { layout, render, sendMail } from "../../../common/mail";
+
+// A digest of tickets, each linked to the app (D35).
+const ticketList = (env: Env, heading: string, rows: { id: number; title: string; note: string }[]) =>
+  layout(
+    env,
+    render("ticket-digest", {
+      heading,
+      rows: rows
+        .map((r) => render("ticket-digest-row", { url: `${env.APP_URL}/tickets/${r.id}`, ticket_id: r.id, title: r.title, note: r.note }))
+        .join(""),
+    })
+  );
 
 // Chase a still-open ticket after this many working days with no update.
 const CHASE_AFTER_WORKDAYS = 3;
@@ -53,6 +65,11 @@ export async function chasePass(env: Env, now: Date): Promise<{ chased: number }
       to: [env.BOARD_EMAIL],
       subject: `LSQ: ${chased.length} ticket(s) chased`,
       text: chased.map((t) => `#${t.id} ${t.title} (last update ${t.last_at})`).join("\n"),
+      html: ticketList(
+        env,
+        `No update in ${CHASE_AFTER_WORKDAYS}+ working days:`,
+        chased.map((t) => ({ id: t.id, title: t.title, note: `last update ${t.last_at.slice(0, 10)}` }))
+      ),
     });
   }
   return { chased: chased.length };
@@ -81,19 +98,24 @@ export async function reminderPass(env: Env, now: Date): Promise<{ due: number }
     ),
   ]);
 
-  const due: string[] = [];
+  const due: { id: number; title: string; note: string }[] = [];
   for (const t of tickets) {
     const ticket = { ...t, events: events.filter((e) => e.subject_id === t.id) };
     for (const s of slas.filter((s) => applies(s, ticket))) {
       if (instances(s, ticket, nowIso).some((i) => i.outcome === "running" && i.days === s.budget_days)) {
-        due.push(`#${t.id} ${t.title}: ${s.name}`);
+        due.push({ id: t.id, title: t.title, note: s.name });
       }
     }
   }
 
   if (due.length) {
     for (const a of agents) {
-      await sendMail(env, { to: [a.email], subject: `LSQ: ${due.length} SLA(s) due today`, text: due.join("\n") });
+      await sendMail(env, {
+        to: [a.email],
+        subject: `LSQ: ${due.length} SLA(s) due today`,
+        text: due.map((d) => `#${d.id} ${d.title}: ${d.note}`).join("\n"),
+        html: ticketList(env, "SLAs due today:", due),
+      });
     }
   }
   return { due: due.length };

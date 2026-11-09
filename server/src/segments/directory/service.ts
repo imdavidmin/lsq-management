@@ -1,7 +1,7 @@
 import type { Env } from "../../env";
 import { all, one, run, grantsForAccount } from "../../db/client";
 import type { Account, Grant } from "../../db/client";
-import { sendMail } from "../../../../common/mail";
+import { layout, render, sendMail } from "../../../../common/mail";
 import { fail } from "../../lib/errors";
 import { primaryRole } from "../../../../common/roles";
 
@@ -193,7 +193,6 @@ export async function inviteAccount(
     building_id?: number | null;
     unit?: string | null;
     org_id?: number | null;
-    loginUrl: string;
   }
 ): Promise<Account | { error: string }> {
   if (!(await roleExists(env, a.role_key))) return { error: "no such role" };
@@ -217,14 +216,13 @@ export async function inviteAccount(
     await grant(a.role_key, a.org_id != null ? "organization" : "estate", a.org_id ?? null);
   }
 
+  const intro = `Hi ${a.name},\n\nAn account has been created for you on the Lansbury Square portal.`;
+  const how = `Sign in with this email address. You'll be sent a one-time login code, so there's no password.`;
   await sendMail(env, {
     to: [account.email],
     subject: "You've been invited to Lansbury Square",
-    text:
-      `Hi ${a.name},\n\n` +
-      `An account has been created for you on the Lansbury Square portal.\n` +
-      `To activate it, sign in with this email address at:\n\n${a.loginUrl}\n\n` +
-      `You'll be sent a one-time login code — no password needed.\n`,
+    text: `${intro}\n\n${how}\n\n${env.APP_URL}\n`,
+    html: layout(env, render("invite", { name: a.name, site_name: env.MAIL_FROM_NAME, app_url: env.APP_URL })),
   });
   return account;
 }

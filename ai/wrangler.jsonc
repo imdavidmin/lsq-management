@@ -5,13 +5,14 @@
   "compatibility_date": "2024-09-23",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
-  // Triage (D32) opens tickets and mails their notice/advice via MailerSend
+  // Triage (D32) opens tickets and mails the triage copy (D34) and advice via MailerSend
   // (secret MAILERSEND_API_KEY; without it mail is only logged).
   "vars": {
     "TICKET_EMAIL_DOMAIN": "ticket.lansburysquare.co.uk",
     "MAIL_DOMAIN": "lansburysquare.co.uk",
     "MAIL_FROM": "ops@lansburysquare.co.uk",
-    "MAIL_FROM_NAME": "Lansbury Square"
+    "MAIL_FROM_NAME": "Lansbury Square",
+    "APP_URL": "https://lansburysquare.co.uk"
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "lsq", "database_id": "3c483ac5-23db-40a4-a0ef-69e94c786281" }
