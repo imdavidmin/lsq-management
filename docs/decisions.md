@@ -601,3 +601,14 @@ ticket breached long before it looked "inactive". The server computes the
 countdown so the frontend doesn't need SLA definitions or working-day maths.
 The list already loads every event on the page, so this costs one extra query
 for the SLA definitions.
+
+### D37 — Board members are residents too
+
+A board account must have a unit, like a resident's. Creating one grants
+`resident` on that unit plus `board` on the estate. Events record the actor's
+top role (`board`), so the SLA `resident` group also matches `board`: a board
+member chasing their own ticket counts as a resident chasing.
+
+**Why:** the board is drawn from leaseholders. Their messages on their own
+tickets were matching neither the staff nor the resident group, so a
+resident-side SLA would never see them.

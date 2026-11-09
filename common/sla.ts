@@ -2,11 +2,12 @@
 // the web SLA editor. Dependency-free, like tickets.ts.
 import { STATUSES } from "./tickets";
 
-// actor_role values each `event_by` group matches.
+// actor_role values each `event_by` group matches. Board members are residents
+// too (D37), but events carry their top role, so `board` counts as resident.
 export const ROLE_GROUPS = {
   staff: ["agent", "admin", "site_staff"],
   contractor: ["contractor"],
-  resident: ["resident"],
+  resident: ["resident", "board"],
 } as const;
 
 // `marker` events: signals no other action records (D21).

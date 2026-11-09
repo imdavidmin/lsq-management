@@ -234,6 +234,12 @@ describe("SLA evaluator", () => {
     // A staff reply stops both; nothing left running.
     expect(nextDue(slas, { ...t, events: [...t.events, ev("2026-11-03T09:00Z", "agent")] }, "2026-11-05T12:00Z")).toBeNull();
   });
+
+  it("a board member's message counts as a resident's (D37)", () => {
+    const sla = def({ start_on: "event_by", start_value: "resident", repeats: 1 });
+    const t = ticket("2026-11-02T09:00Z", [ev("2026-11-02T10:00Z", "board"), ev("2026-11-02T11:00Z", "agent")]);
+    expect(instances(sla, t, "2026-11-03T12:00Z")).toHaveLength(1);
+  });
 });
 
 describe("scoring — /score", () => {

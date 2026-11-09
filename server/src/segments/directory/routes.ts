@@ -39,7 +39,8 @@ directory.post("/accounts", requirePermission("account:manage"), async (c) => {
         org_id: z.number().int().nullish(),
       })
       .refine((a) => !a.unit || a.building_id != null, { message: "building_id required with unit" })
-      .refine((a) => a.role_key !== "resident" || !!a.unit, { message: "a resident needs a unit" })
+      // Board members are residents too (D37).
+      .refine((a) => !["resident", "board"].includes(a.role_key) || !!a.unit, { message: "a resident or board member needs a unit" })
   );
   if (await svc.emailInUse(c.env, a.email)) conflict("email already exists");
   const res = await svc.inviteAccount(c.env, a);

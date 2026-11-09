@@ -114,6 +114,7 @@ describe("directory", () => {
 
     const bad = (b: object) => post("/api/accounts", board.cookie, { email: "x@lsq.test", name: "X", ...b });
     expect((await bad({ role_key: "resident" })).status).toBe(400); // resident needs a unit
+    expect((await bad({ role_key: "board" })).status).toBe(400); // so does a board member (D37)
     expect((await bad({ role_key: "agent", unit: "Flat 1" })).status).toBe(400); // unit needs a building
     expect((await bad({ role_key: "nope" })).status).toBe(400);
     log.mockRestore();
