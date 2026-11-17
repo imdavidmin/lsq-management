@@ -17,6 +17,8 @@ export interface Env {
   REPORT_DAY_OF_MONTH: string; // day-of-month the monthly report fires
   // secrets
   MAILERSEND_API_KEY?: string;
+  SENTRY_DSN?: string; // error alerts (D38)
+  MAILERSEND_WEBHOOK_SECRET?: string; // signs /webhooks/mailersend (D38)
   CF_EMAIL_TOKEN?: string; // registers Email Routing destination addresses (D26)
 }
 

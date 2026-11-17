@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@sentry/cloudflare": "^10.67.0",
     "hono": "^4.6.0",
     "zod": "^3.23.0"
   },

@@ -28,9 +28,10 @@ audited.
 - **Data minimisation.** `accounts` is identity-only (name, email, active).
   Everything else hangs off it by reference.
 - **Purpose limitation.** Data exists to run tickets, scoring, and comms for the
-  estate. No secondary use, two documented processors: MailerSend
-  (outbound email) and Cloudflare (hosting, inbound Email Routing, which also
-  holds alias forward destinations).
+  estate. No secondary use, three documented processors: MailerSend
+  (outbound email), Cloudflare (hosting, inbound Email Routing, which also
+  holds alias forward destinations) and Sentry (error alerts, D38; errors can
+  include an email address).
 - **Lawful basis.** Legitimate interest of the freeholder/board in managing the
   estate; residents are informed. No marketing, no profiling.
 - **Raw mail and attachments** (R2) follow the ticket's retention. Erasing a

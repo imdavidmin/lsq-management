@@ -612,3 +612,27 @@ member chasing their own ticket counts as a resident chasing.
 **Why:** the board is drawn from leaseholders. Their messages on their own
 tickets were matching neither the staff nor the resident group, so a
 resident-side SLA would never see them.
+
+### D38 — Errors alert through Sentry
+
+All three Workers are wrapped with `@sentry/cloudflare` (`common/sentry.ts`).
+Every `console.error` and uncaught exception becomes a Sentry issue in one
+project, `lsq-workers`, tagged `worker=server|email|ai`. Sentry emails the
+board on new high-priority issues. The daily cron checks in as the
+`daily-cron` monitor, so a missed run alerts too. The DSN is the
+`SENTRY_DSN` secret on each Worker. Without it (dev, tests) Sentry is off.
+Workers Logs stays on as the full log. MailerSend posts delivery events to
+`POST /api/webhooks/mailersend` (signed with the `MAILERSEND_WEBHOOK_SECRET`
+secret). Hard bounces, spam complaints and suppressed sends (an address
+MailerSend now refuses to mail, e.g. after a bounce) are logged as errors, so
+they alert too. Other events are ignored.
+
+**Why:** a MailerSend rejection broke every OTP email and nobody knew. The
+error was in Workers Logs, but nothing tells anyone to look. The alert can't
+go out by email from us, because outbound email is often the thing that has
+failed. Sentry sends its own mail. Capturing `console.error` means
+existing error logging needs no changes.
+
+**Data:** `sendDefaultPii` stays off. Error messages can still carry an
+email address or ticket id, so Sentry is listed as a processor (gdpr.md).
+SDK pinned to 10.67: 11.x needs wrangler 4.

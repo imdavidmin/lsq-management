@@ -1,4 +1,4 @@
-import { env } from "cloudflare:test";
+import { createExecutionContext, env } from "cloudflare:test";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import worker from "../src/index";
 import { triageInbound } from "../src/triage";
@@ -112,7 +112,8 @@ describe("ai Worker — triage (D32)", () => {
     let acked = false;
     await worker.queue!(
       { messages: [{ body: msg("k", "management", "Gym"), ack: () => (acked = true), retry: () => {} }] } as any,
-      h
+      h,
+      createExecutionContext()
     );
     expect(acked).toBe(true);
 

@@ -71,6 +71,8 @@
     "crons": ["0 2 * * *"]
   }
   // Secrets (`wrangler secret put <NAME>`): MAILERSEND_API_KEY (outbound mail),
+  // SENTRY_DSN (error alerts, D38; also on the email and ai Workers),
+  // MAILERSEND_WEBHOOK_SECRET (signing secret of the MailerSend webhook, D38),
   // CF_EMAIL_TOKEN (registers alias destinations, D26). See architecture.md →
   // "Domain & mail DNS".
   // Inbound email is NOT handled here — it routes to the separate `lsq-email`

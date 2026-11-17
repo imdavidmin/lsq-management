@@ -123,6 +123,12 @@ get it filled in (D36).
 | GET    | `/site-info`                    | `config:read`    | Site info markdown (contacts etc.)  | —     |
 | PUT    | `/site-info`                    | `config:manage`  | Replace site info markdown (admin)  | —     |
 
+## webhooks · `/webhooks/*`
+
+| Method | Path                   | Perm      | Purpose                                                        | UJ  |
+| ------ | ---------------------- | --------- | -------------------------------------------------------------- | --- |
+| POST   | `/webhooks/mailersend` | signature | MailerSend events; bounce / complaint / suppressed → alert (D38)| —   |
+
 ## Event-triggered workers (no HTTP)
 
 Inbound email is split across two Workers plus a queue (D20); the cron stays on

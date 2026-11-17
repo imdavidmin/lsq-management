@@ -32,6 +32,8 @@ tags:
     description: Performance fee, metric config/values, SLAs, scoring settings, reports (server segment)
   - name: engagement
     description: Surveys and site information (server segment)
+  - name: webhooks
+    description: Signed callbacks from third parties (server segment)
 
 security:
   - sessionCookie: []
@@ -1277,6 +1279,32 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SiteInfo" }
 
+  /webhooks/mailersend:
+    post:
+      tags: [webhooks]
+      summary: MailerSend delivery events
+      security: []
+      description: >-
+        Verified by the `Signature` header (hex HMAC-SHA256 of the raw body with
+        the webhook's signing secret). Hard bounces, spam complaints and
+        suppressed sends raise an error alert (D38); other events are acknowledged and ignored. The
+        `webhook.test` ping is acknowledged unchecked.
+      parameters:
+        - { name: Signature, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: { type: string, example: activity.hard_bounced }
+                data: { type: object }
+      responses:
+        "204": { description: Event accepted }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 components:
   securitySchemes:
     sessionCookie:

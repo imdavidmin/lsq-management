@@ -8,6 +8,7 @@ import { tickets } from "./segments/tickets/routes";
 import { directory } from "./segments/directory/routes";
 import { engagement } from "./segments/engagement/routes";
 import { scoring } from "./segments/scoring/routes";
+import { webhooks } from "./segments/webhooks/routes";
 
 export const app = new Hono<AppContext>();
 
@@ -25,6 +26,7 @@ const api = new Hono<AppContext>();
 api.get("/health", (c) => c.json({ ok: true }));
 api.route("/auth", auth); // segment routers mounted as each phase is delivered
 api.route("/tickets", tickets);
+api.route("/webhooks", webhooks); // third-party callbacks, signature-checked; before the "/" routers, whose requireSession covers every path
 api.route("/", directory); // accounts, grants, roles, buildings, units, orgs, senders
 api.route("/", engagement); // surveys, site info
 api.route("/", scoring); // metrics, SLAs, scoring settings

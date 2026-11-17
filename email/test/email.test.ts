@@ -1,4 +1,4 @@
-import { env } from "cloudflare:test";
+import { createExecutionContext, env } from "cloudflare:test";
 import { describe, it, expect, beforeEach } from "vitest";
 import worker from "../src/index";
 import type { InboundEmail, QueuedEmail } from "../../common/queue";
@@ -49,16 +49,16 @@ describe("email Worker", () => {
   it("rejects unknown and non-numeric ticket addresses without enqueuing", async () => {
     const f = fakes();
     const bad = craft("x@y.com", `9999@${DOMAIN}`);
-    await worker.email!(bad.message, f.env);
+    await worker.email!(bad.message, f.env, createExecutionContext());
     expect(bad.reject()).toMatch(/no such ticket/);
 
     const nan = craft("x@y.com", `nope@${DOMAIN}`);
-    await worker.email!(nan.message, f.env);
+    await worker.email!(nan.message, f.env, createExecutionContext());
     expect(nan.reject()).toMatch(/unrecognised/);
 
     // A real ticket id on the main domain doesn't thread (D25): it's an alias lookup.
     const apex = craft("x@y.com", "1234@lansburysquare.co.uk");
-    await worker.email!(apex.message, f.env);
+    await worker.email!(apex.message, f.env, createExecutionContext());
     expect(apex.reject()).toMatch(/no such address/);
 
     expect(f.sent.length).toBe(0);
@@ -68,7 +68,7 @@ describe("email Worker", () => {
   it("stashes raw in R2 and enqueues the key for a valid ticket", async () => {
     const f = fakes();
     const { message, reject } = craft("Sender@Acme.com", `1234@${DOMAIN}`, "Update");
-    await worker.email!(message, f.env);
+    await worker.email!(message, f.env, createExecutionContext());
 
     expect(reject()).toBeNull();
     expect(f.sent.length).toBe(1);
@@ -86,12 +86,12 @@ describe("email Worker", () => {
     const f = fakes();
 
     const board = craft("x@y.com", "Board@lansburysquare.co.uk");
-    await worker.email!(board.message, f.env);
+    await worker.email!(board.message, f.env, createExecutionContext());
     expect(board.reject()).toBeNull();
     expect(board.forwarded).toEqual(["a@gmail.com", "b@live.com"]);
 
     const unknown = craft("x@y.com", "nobody@lansburysquare.co.uk");
-    await worker.email!(unknown.message, f.env);
+    await worker.email!(unknown.message, f.env, createExecutionContext());
     expect(unknown.reject()).toMatch(/no such address/);
     expect(f.sent.length).toBe(0); // aliases never touch the ticket queue
   });
@@ -102,14 +102,14 @@ describe("email Worker", () => {
       const own = craft("bounce@mta.lansburysquare.co.uk", `1234@${DOMAIN}`, "[#1234] Leak", "notice", {
         from: `Lansbury Square <${local}@${DOMAIN}>`,
       });
-      await worker.email!(own.message, f.env);
+      await worker.email!(own.message, f.env, createExecutionContext());
       expect(own.reject()).toBeNull(); // accepted, not bounced
     }
     expect(f.sent.length).toBe(0);
 
     // Other mail from our own sending address is still logged.
     const ops = craft("ops@lansburysquare.co.uk", `1234@${DOMAIN}`, "Re", "hi", { from: "ops@lansburysquare.co.uk" });
-    await worker.email!(ops.message, f.env);
+    await worker.email!(ops.message, f.env, createExecutionContext());
     expect(f.sent.length).toBe(1);
   });
 
@@ -123,7 +123,7 @@ describe("email Worker", () => {
     const f = fakes();
 
     const known = craft("Res@lsq.test", "Concierge@lansburysquare.co.uk", "Bins overflowing");
-    await worker.email!(known.message, f.env);
+    await worker.email!(known.message, f.env, createExecutionContext());
     expect(known.forwarded).toEqual(["desk@gmail.com"]);
     expect(f.sent).toEqual([
       { inbox: "concierge", accountId: 77, from: "res@lsq.test", subject: "Bins overflowing", rawKey: expect.stringMatching(/^triage\/concierge\//) },
@@ -137,7 +137,7 @@ describe("email Worker", () => {
       craft("res@lsq.test", "concierge@lansburysquare.co.uk", "Out of office", "away", { "auto-submitted": "auto-replied" }),
       craft("res@lsq.test", "board@lansburysquare.co.uk", "Hello"),
     ]) {
-      await worker.email!(m.message, f.env);
+      await worker.email!(m.message, f.env, createExecutionContext());
       expect(m.forwarded.length).toBe(1);
     }
     expect(f.sent.length).toBe(1);

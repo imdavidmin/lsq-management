@@ -12,6 +12,7 @@ export interface Env extends MailEnv {
   AI?: Ai; // absent in tests/dev → summary/classification skipped, event still recorded
   TICKET_EMAIL_DOMAIN: string;
   MAIL_DOMAIN: string;
+  SENTRY_DSN?: string; // error alerts (D38)
 }
 
 const MODEL = "@cf/facebook/bart-large-cnn"; // summarisation

@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/cloudflare";
+import { sentryOptions } from "../../common/sentry";
 import type { QueuedEmail } from "../../common/queue";
 import { processInbound, type Env } from "./process";
 import { triageInbound } from "./triage";
@@ -6,7 +8,7 @@ import { triageInbound } from "./triage";
 // a triage inbox (D32). ack on success; retry on failure so a transient
 // AI/DB/R2 error is retried (and dead-lettered after the queue's max_retries)
 // rather than lost.
-export default {
+export default Sentry.withSentry<Env, QueuedEmail>(sentryOptions("ai"), {
   async queue(batch: MessageBatch<QueuedEmail>, env: Env): Promise<void> {
     for (const m of batch.messages) {
       try {
@@ -19,4 +21,4 @@ export default {
       }
     }
   },
-} satisfies ExportedHandler<Env, QueuedEmail>;
+} satisfies ExportedHandler<Env, QueuedEmail>);

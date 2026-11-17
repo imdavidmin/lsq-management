@@ -20,6 +20,7 @@ declare module "cloudflare:test" {
     CF_ZONE_ID: string;
     REPORT_DAY_OF_MONTH: string;
     MAILERSEND_API_KEY?: string;
+    MAILERSEND_WEBHOOK_SECRET?: string;
     CF_EMAIL_TOKEN?: string;
     TEST_MIGRATIONS: D1Migration[];
   }

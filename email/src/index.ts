@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/cloudflare";
+import { sentryOptions } from "../../common/sentry";
 import { TRIAGE_INBOXES, type QueuedEmail, type TriageInbox } from "../../common/queue";
 
 export interface Env {
@@ -6,6 +8,7 @@ export interface Env {
   RAW: R2Bucket;
   TICKET_EMAIL_DOMAIN: string;
   MAIL_DOMAIN: string;
+  SENTRY_DSN?: string; // error alerts (D38)
 }
 
 // Bare address from a From header ("Name <a@b>" or "a@b"), lowercased.
@@ -66,7 +69,7 @@ async function forwardAlias(message: ForwardableEmailMessage, env: Env, localPar
 // Deliberately tiny: email() handlers run under a tight budget. Main-domain
 // aliases are forwarded; ticket mail is validated, stashed in R2 and its key
 // enqueued. All resolution/AI/DB-writes happen off the critical path in the ai Worker.
-export default {
+export default Sentry.withSentry<Env>(sentryOptions("email"), {
   async email(message: ForwardableEmailMessage, env: Env): Promise<void> {
     const at = message.to.lastIndexOf("@");
     const localPart = message.to.slice(0, at).trim();
@@ -93,4 +96,4 @@ export default {
       rawKey,
     });
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<Env>);

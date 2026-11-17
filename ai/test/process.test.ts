@@ -1,4 +1,4 @@
-import { env } from "cloudflare:test";
+import { createExecutionContext, env } from "cloudflare:test";
 import { describe, it, expect, beforeEach } from "vitest";
 import worker from "../src/index";
 import { processInbound } from "../src/process";
@@ -94,7 +94,7 @@ describe("ai Worker — processInbound", () => {
         },
       ],
     } as any;
-    await worker.queue!(batch, h.env);
+    await worker.queue!(batch, h.env, createExecutionContext());
     expect(acked).toBe(true);
   });
 
