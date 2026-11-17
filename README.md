@@ -53,7 +53,7 @@ email is a separate `email` → queue → `ai` pipeline (D20).
 **Stack:** Frontend — Vite + React + TypeScript + Fluent UI v9 (softened theme),
 ag-grid for advanced tables. Backend — Cloudflare Workers (server + email + ai) +
 D1 + Queues + R2 + Workers AI (email summarisation) + Email Routing + Cron
-Triggers. Board-maintained, no per-seat vendor licence.
+Triggers. Errors alert through Sentry (see docs/architecture.md → Errors & alerting). Board-maintained, no per-seat vendor licence.
 Scale is trivial for ~200 units — infra choice is about zero-cost ownership, not
 throughput. Metric scoring runs on-demand; only chase + monthly report are
 scheduled.
@@ -113,7 +113,8 @@ npm run fe               # Vite frontend (second terminal)
 
 `.dev.vars` shadows `.env`. `.env` holds the live `MAILERSEND_API_KEY`, so
 without a `.dev.vars`, `wrangler dev` would send real mail. With it, the login
-code is printed in the `npm run be` console (`[mail:dev]`). Seeded accounts:
+code is printed in the `npm run be` console (`[mail:dev]`). Sentry is off
+locally (no `SENTRY_DSN`), so errors only show in that console. Seeded accounts:
 
 | Email                        | Role in dev seed   |
 | ---------------------------- | ------------------ |

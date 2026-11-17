@@ -20,6 +20,7 @@ email flow and the nightly scoring/chase engine.
   board-provisioned main-domain aliases go to the same Worker, which forwards copies (D25, D26).
 - **MailerSend** — all outbound mail (OTP, invites, chases, reminders, reports).
 - **Cron Triggers** — daily chase + monthly report on the `server` Worker (scoring is on-demand).
+- **Sentry** — error alerts from all three Workers, plus a check-in for the daily cron (D38). See Errors & alerting.
 
 No external issue tracker: ticket CRUD is ~10 columns + an events table, and a
 vendor product would fight (a) email-addressable ticket ids, (b) the bespoke
@@ -216,6 +217,24 @@ A single Cron Trigger does the only things that need a timer:
 Durable Object per-ticket alarms were considered for exact-moment chasing but
 rejected — more moving parts for no practical gain at ~200 units; a daily sweep
 is indistinguishable in outcome.
+
+## Errors & alerting (D38)
+
+- **Sentry** (project `lsq-workers`, org `lansbury-square-management-com`): all
+  three Workers are wrapped by `common/sentry.ts`. Every `console.error` and
+  uncaught exception becomes an issue tagged `worker=server|email|ai`. Sentry
+  emails the board account on new high-priority issues, using its own mail, so
+  alerts still arrive when our outbound mail is down. The cron checks in as the
+  `daily-cron` monitor, so a missed run alerts too.
+- **Workers Logs** (`observability` in each `wrangler.jsonc`): the full log of
+  every Worker, searchable in the Cloudflare dashboard (Workers → *worker* → Logs).
+- **MailerSend webhook** → `POST /api/webhooks/mailersend`, signed with
+  `MAILERSEND_WEBHOOK_SECRET`. Hard bounces, spam complaints and suppressed
+  sends are logged as errors, so they alert too. Other events are ignored.
+- **To raise an alert from code:** `console.error("[area] what failed", err)`. Use
+  `console.log`/`console.warn` for anything that shouldn't wake anyone.
+- **Secrets:** `SENTRY_DSN` on all three Workers; without it (local dev, tests)
+  Sentry is off. Sentry is a GDPR processor (gdpr.md).
 
 ## Roles & visibility (scoped RBAC — see D18)
 

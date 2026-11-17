@@ -105,6 +105,8 @@ Shared dependency-free code lives in `common/` (`queue.ts`, `roles.ts`,
 Conventions in force (match them):
 - Routes validate with zod and gate with `requirePermission` before doing work.
 - Errors go through `lib/errors.ts` so the body matches `openapi.yaml`'s `Error`.
+- `console.error` raises a Sentry alert (D38): use it for failures someone must
+  act on, `console.warn`/`log` for the rest.
 - SQLite has no booleans: columns are `0/1`; serialize to real booleans at the
   route boundary (see `serializeTicket`).
 - `openapi.yaml` is the HTTP contract — update it when you change a route.
