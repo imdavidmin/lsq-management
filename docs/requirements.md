@@ -22,7 +22,10 @@ Authoritative spec. The scoring rubric here is the source of truth for the
 - Sender resolution order: exact `accounts` email (a known person) → `senders`
   email → `senders` domain (→ an organization) → else upsert into `senders` with
   no org (logged as unknown).
-- Sender role attributes SLA actions (agent reply, contractor reply, etc.).
+- Sender role attributes SLA actions (agent reply, contractor reply, etc.). An
+  unknown sender has no role at ingest; it is resolved from the current sender
+  rules when scoring (D43), and still hands a ticket back from
+  `awaiting_resident` to `open` (D39).
 - **AI opt-out:** subject contains `no ai` (any casing) → email is threaded and
   timestamped for SLA, but skipped for AI summarisation.
 
@@ -294,9 +297,12 @@ ending in a completed state.
 Working days are defined against a holiday calendar (JSON config) and, for
 cleaning, the cleaning contractor's on-site schedule (JSON config).
 
-> **How the SLA-clock metrics below actually get computed from `events` is not
-> yet settled** — see [sla-tracking.md](sla-tracking.md), which also covers the
-> manual scoring-exclusion escape hatch for extraordinary-circumstance tickets.
+> The SLA-clock metrics below are computed on read from `events` by the SLA
+> evaluator (D21, D39–D43; see [plan/plan-scoring-sla.md](plan/plan-scoring-sla.md)).
+> "Acknowledged" means triaged by staff (D40), not any reply; time a ticket
+> spends `awaiting_resident` or `awaiting_board` doesn't count; duplicates are
+> excluded (D42). [sla-tracking.md](sla-tracking.md) covers the still-open manual
+> scoring-exclusion escape hatch for extraordinary-circumstance tickets.
 
 ### Financial Management — 40%
 

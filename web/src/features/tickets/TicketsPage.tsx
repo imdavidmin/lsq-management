@@ -51,13 +51,13 @@ function lastActivityMs(t: TicketDetail): number {
 function bucketOf(t: TicketDetail): Bucket {
   if (isTerminal(t.status)) return "completed";
   if (t.sla_due && t.sla_due.remaining_days <= URGENT_DAYS) return "urgent";
-  return t.status === "pending_3rd_party" ? "pending" : "open";
+  return t.status === "open" ? "open" : "pending";
 }
 
 const GROUPS: { key: Bucket; title: string; tone: GroupTone; icon: ReactNode; defaultOpen: boolean }[] = [
   { key: "urgent", title: "Urgent — SLA breached or due within 1 working day", tone: "danger", icon: <Warning20Filled />, defaultOpen: true },
   { key: "open", title: "Open — requires response", tone: "neutral", icon: <Circle20Regular />, defaultOpen: true },
-  { key: "pending", title: "Pending — awaiting resident / contractor", tone: "warning", icon: <Clock20Regular />, defaultOpen: true },
+  { key: "pending", title: "Pending — with resident, board or 3rd party", tone: "warning", icon: <Clock20Regular />, defaultOpen: true },
   { key: "completed", title: "Completed", tone: "success", icon: <CheckmarkCircle20Filled />, defaultOpen: false },
 ];
 

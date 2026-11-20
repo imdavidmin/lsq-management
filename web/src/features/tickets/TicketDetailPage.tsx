@@ -1,18 +1,13 @@
 import { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   Badge,
   Button,
   Card,
-  Dialog,
-  DialogActions,
-  DialogBody,
-  DialogContent,
-  DialogSurface,
-  DialogTitle,
   Dropdown,
   Field,
   Option,
+  Switch,
   Text,
   Textarea,
   Title1,
@@ -21,16 +16,18 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import { ArrowSyncRegular, AttachRegular, CopyRegular, EditRegular, MailRegular } from "@fluentui/react-icons";
+import { ArrowSyncRegular, AttachRegular, CopyRegular, MailRegular } from "@fluentui/react-icons";
 import { Can } from "../../auth/Can";
 import { Query } from "../../lib/Query";
 import { Stamp } from "../../components/Stamp";
 import { CATEGORIES, humanize, isTerminal, roleColor } from "../../components/ticketDisplay";
-import { STATUSES } from "../../../../common/tickets";
 import { useAccounts, useBuildings, useUnits } from "../directory/api";
-import type { Event, TicketDetail, TicketStatus } from "../../api/types";
-import { useAddComment, useAddMarker, usePatchTicket, useTicket } from "./api";
+import type { Event, TicketDetail } from "../../api/types";
+import { useAddComment, usePatchTicket, useTicket } from "./api";
 import { SlaPanel } from "./SlaPanel";
+import { AttendedDialog, DuplicateDialog, ScheduleDialog, StatusDialog, TriageDialog } from "./TicketActions";
+
+const triaged = (t: TicketDetail) => !!t.events?.some((e) => e.type === "marker" && e.to_value === "triaged");
 
 const useStyles = makeStyles({
   grid: { display: "grid", gridTemplateColumns: "1fr 320px", gap: tokens.spacingHorizontalXXL, alignItems: "start" },
@@ -54,7 +51,8 @@ const useStyles = makeStyles({
   // A non-comment event: a single inline line, no card.
   eventLine: { display: "flex", gap: tokens.spacingHorizontalS, alignItems: "center", padding: `0 ${tokens.spacingHorizontalM}`, color: tokens.colorNeutralForeground2 },
   composer: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalS, alignItems: "flex-start" },
-  dialogFields: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalM },
+  actions: { display: "flex", alignItems: "center", gap: tokens.spacingHorizontalS, flexWrap: "wrap", marginBottom: tokens.spacingVerticalM },
+  detailsCard: { padding: tokens.spacingVerticalL },
 });
 
 
@@ -113,18 +111,26 @@ function CommentCard({ e, name }: { e: Event; name: string }) {
   );
 }
 
+function eventDetail(e: Event): string {
+  const withBody = (text: string) => (e.body ? `${text} — ${e.body}` : text);
+  switch (e.type) {
+    case "status":
+      if (e.actor_role === "system" && e.to_value === "open") return "moved the ticket back to the agent after a reply";
+      return withBody(`changed status ${e.from_value ? `from ${humanize(e.from_value)} ` : ""}to ${humanize(e.to_value ?? "")}`);
+    case "schedule": return withBody(`scheduled the next action for ${e.to_value}`);
+    case "flag": return e.to_value === "needs_contractor:1" ? "marked contractor needed" : "marked contractor not needed";
+    case "duplicate": return `marked this a duplicate of #${e.to_value}`;
+    case "marker": return withBody(`marked: ${humanize(e.to_value)}`);
+    default: return `${e.type}${e.from_value || e.to_value ? `: ${e.from_value ?? ""} → ${e.to_value ?? ""}` : ""}`;
+  }
+}
+
 function EventLine({ e, name }: { e: Event; name: string }) {
   const s = useStyles();
-  const detail =
-    e.type === "status"
-      ? `changed status ${e.from_value ? `from ${humanize(e.from_value)} ` : ""}to ${humanize(e.to_value ?? "")}`
-      : e.type === "marker"
-        ? `marked: ${humanize(e.to_value)}${e.body ? ` — ${e.body}` : ""}`
-        : `${e.type}${e.from_value || e.to_value ? `: ${e.from_value ?? ""} → ${e.to_value ?? ""}` : ""}`;
   return (
     <div className={s.eventLine}>
       <ArrowSyncRegular />
-      <Text size={200}><b>{name}</b> {detail}</Text>
+      <Text size={200}><b>{name}</b> {eventDetail(e)}</Text>
       <Stamp at={e.at} />
     </div>
   );
@@ -157,85 +163,6 @@ function OpenedBy({ t, who }: { t: TicketDetail; who: string }) {
         </div>
       )}
     </>
-  );
-}
-
-// Icon-triggered dialog: pick a new status + required comment, then commit.
-function StatusDialog({ id, current }: { id: number; current: TicketStatus }) {
-  const s = useStyles();
-  const patch = usePatchTicket(id);
-  const addComment = useAddComment(id);
-  const [open, setOpen] = useState(false);
-  const [status, setStatus] = useState<TicketStatus>(current);
-  const [comment, setComment] = useState("");
-  const busy = patch.isPending || addComment.isPending;
-
-  const commit = async () => {
-    await addComment.mutateAsync(comment);
-    if (status !== current) await patch.mutateAsync({ status });
-    setOpen(false);
-    setComment("");
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(_, d) => { setOpen(d.open); if (d.open) setStatus(current); }}>
-      <Tooltip content="Change status" relationship="label">
-        <Button appearance="subtle" size="small" icon={<EditRegular />} onClick={() => setOpen(true)} />
-      </Tooltip>
-      <DialogSurface>
-        <DialogBody>
-          <DialogTitle>Change status</DialogTitle>
-          <DialogContent className={s.dialogFields}>
-            <Field label="New status">
-              <Dropdown
-                value={humanize(status)}
-                selectedOptions={[status]}
-                onOptionSelect={(_, d) => setStatus(d.optionValue as TicketStatus)}
-              >
-                {STATUSES.map((st) => <Option key={st} value={st}>{humanize(st)}</Option>)}
-              </Dropdown>
-            </Field>
-            <Field label="Comment" required>
-              <Textarea value={comment} onChange={(_, d) => setComment(d.value)} rows={3} />
-            </Field>
-          </DialogContent>
-          <DialogActions>
-            <Button appearance="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button appearance="primary" disabled={busy || !comment} onClick={commit}>Confirm</Button>
-          </DialogActions>
-        </DialogBody>
-      </DialogSurface>
-    </Dialog>
-  );
-}
-
-// On-site team records a contractor visit; its notes feed the attendance SLA (D21).
-function AttendedDialog({ id }: { id: number }) {
-  const s = useStyles();
-  const mark = useAddMarker(id);
-  const [open, setOpen] = useState(false);
-  const [notes, setNotes] = useState("");
-
-  const commit = () => mark.mutate(notes, { onSuccess: () => { setOpen(false); setNotes(""); } });
-
-  return (
-    <Dialog open={open} onOpenChange={(_, d) => setOpen(d.open)}>
-      <Button appearance="secondary" onClick={() => setOpen(true)}>Contractor attended</Button>
-      <DialogSurface>
-        <DialogBody>
-          <DialogTitle>Contractor attended</DialogTitle>
-          <DialogContent className={s.dialogFields}>
-            <Field label="What was done" required>
-              <Textarea value={notes} onChange={(_, d) => setNotes(d.value)} rows={3} />
-            </Field>
-          </DialogContent>
-          <DialogActions>
-            <Button appearance="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button appearance="primary" disabled={mark.isPending || !notes.trim()} onClick={commit}>Record</Button>
-          </DialogActions>
-        </DialogBody>
-      </DialogSurface>
-    </Dialog>
   );
 }
 
@@ -295,7 +222,7 @@ export function TicketDetailPage() {
               </div>
 
               <div className={s.side}>
-                <Card appearance="outline" style={{ padding: tokens.spacingVerticalL }}>
+                <Card appearance="outline" className={s.detailsCard}>
                   <Title3>Details</Title3>
                   <div className={s.field}>
                     <Text size={200} className={s.label}>Status</Text>
@@ -303,9 +230,18 @@ export function TicketDetailPage() {
                       <Badge appearance="filled" color={isTerminal(t.status) ? "success" : "brand"}>
                         {humanize(t.status!)}
                       </Badge>
-                      <Can perm="ticket:update"><StatusDialog id={id} current={t.status!} /></Can>
+                      {!isTerminal(t.status) && (
+                        <Can perm="ticket:update">
+                          {triaged(t) ? <StatusDialog id={id} current={t.status!} /> : <TriageDialog t={t} />}
+                        </Can>
+                      )}
                     </div>
                   </div>
+                  {t.duplicate_of && (
+                    <div className={s.field}>
+                      <Text>Duplicate of <Link to={`/tickets/${t.duplicate_of}`}>#{t.duplicate_of}</Link></Text>
+                    </div>
+                  )}
                   <div className={s.field}>
                     <Text size={200} className={s.label}>Category ({t.classified_by})</Text>
                     <Can perm="ticket:update" fallback={<Text>{t.category ? humanize(t.category) : "—"}</Text>}>
@@ -326,7 +262,26 @@ export function TicketDetailPage() {
                       </Dropdown>
                     </Can>
                   </div>
-                  {t.needs_contractor && <Can perm="ticket:update"><AttendedDialog id={id} /></Can>}
+                  {!isTerminal(t.status) && triaged(t) && (
+                    <Can perm="ticket:update">
+                      <Switch
+                        className={s.field}
+                        label="Needs a contractor"
+                        checked={!!t.needs_contractor}
+                        disabled={patch.isPending}
+                        onChange={(_, d) => patch.mutate({ needs_contractor: d.checked })}
+                      />
+                    </Can>
+                  )}
+                  {!isTerminal(t.status) && (
+                    <Can perm="ticket:update">
+                      <div className={s.actions}>
+                        {t.needs_contractor && <AttendedDialog id={id} />}
+                        <ScheduleDialog id={id} />
+                        <DuplicateDialog id={id} />
+                      </div>
+                    </Can>
+                  )}
                   <OpenedBy t={t} who={accounts.data?.find((a) => a.id === t.created_by)?.name ?? (t.created_by ? `#${t.created_by}` : "unknown")} />
                 </Card>
 

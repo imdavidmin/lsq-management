@@ -1,6 +1,6 @@
 # SLA & Contractor-Response Tracking
 
-> **Status: core model settled (D21).** The design questions below are answered
+> **Status: core model settled (D21), extended by the ball model (D39–D43).** The design questions below are answered
 > in "Settled by D21"; implementation is tracked in
 > [plan/plan-scoring-sla.md](plan/plan-scoring-sla.md). The manual scoring exclusion is
 > still open.
@@ -25,7 +25,8 @@ derived from `events`, not stored as bespoke columns.
 - `events.actor_role` (resident|agent|admin|site_staff|contractor|system) — tells us *who*
   moved a ticket, which is the basis for "agent replied", "contractor replied".
 - `events.type = 'clock'` — originally reserved for SLA clock stamps; unused
-  under D21.
+  under D21. SLA-relevant events are `status`, `flag` (needs_contractor),
+  `schedule`, `marker` (`enquiry_sent`, `attended`, `triaged`) and `duplicate`.
 - The daily Cron chase pass (D14) already sweeps open tickets — the natural place
   to *detect* a breached/near-deadline clock and stamp/notify.
 
@@ -34,14 +35,19 @@ derived from `events`, not stored as bespoke columns.
 1. **Definitions are data.** One `slas` row per rule (filter, start, stop,
    working-day budget, repeats), edited in the UI.
 2. **Judgement signals become markers.** `enquiry_sent` is inferred from agent
-   email CC'ing a contractor, `attended` is entered by the on-site team. "Agent response expected" = any
-   contractor event starts a staff-reply SLA.
+   email CC'ing a contractor, `attended` is entered by the on-site team, and
+   `triaged` is the agent's triage action. "Acknowledged" means triaged (D40).
+   "Agent response expected" = any contractor event starts a staff-reply SLA.
 3. **State is recomputed on read**, no `clock` events. The cron writes only
-   chases. Its SLA "due today" reminders are emails, not events (D24).
-4. **Working-day arithmetic** is `server/src/lib/workdays.ts` (holidays only;
+   chases and the D39 auto-close. Its SLA "due today" reminders are emails, not events (D24).
+4. **Ticket status says who has the ball (D39).** Working days spent
+   `awaiting_resident` or `awaiting_board` don't count toward any SLA. Follow-up
+   SLAs stop on a `next_step` (a status change or a scheduled date, D41), not a
+   comment. Duplicates (D42) are excluded.
+5. **Working-day arithmetic** is `server/src/lib/workdays.ts` (holidays only;
    the cleaning schedule is parked, see [plan/parked.md](plan/parked.md)).
 
-Plan and worked traces per SLA: [plan/plan-scoring-sla.md](plan/plan-scoring-sla.md).
+Plan and worked scenarios: [plan/plan-scoring-sla.md](plan/plan-scoring-sla.md).
 
 ## Manual exclusion escape hatch
 

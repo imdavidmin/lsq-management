@@ -58,15 +58,26 @@ const KIND_LABEL: Record<SlaKind, string> = {
   status: "status becomes",
   event_by: "an event by",
   marker: "marker",
-  scheduled: "scheduled date arrives",
-  flag: "flag set",
-  next_step: "next step recorded",
+  scheduled: "scheduled date",
+  flag: "contractor flag",
+  next_step: "next step",
 };
 
 const words = (v: string) => v.replace(/_/g, " ");
 const workingDays = (n: number) => `${n} working day${n === 1 ? "" : "s"}`;
-const point = (kind: SlaKind, value: string | null) =>
-  value ? words(value) : KIND_LABEL[kind];
+// A noun phrase for a start/stop point, used in the preview sentence and the table.
+function point(kind: SlaKind, value: string | null): string {
+  const v = words(value ?? "…");
+  switch (kind) {
+    case "status": return `status "${v}"`;
+    case "event_by": return `an event by ${v}`;
+    case "marker": return `the "${v}" marker`;
+    case "ticket_created": return "the ticket being created";
+    case "scheduled": return "the scheduled date";
+    case "flag": return "the contractor flag being set";
+    case "next_step": return "a next step (status change or new date)";
+  }
+}
 
 const appliesTo = (s: SlaDraft) =>
   [
@@ -225,9 +236,8 @@ function SlaDrawer({ draft, onClose, canEdit }: { draft: SlaDraft | null; onClos
             onChange={(_, d) => set({ repeats: !!d.checked })}
           />
           <Text className={s.preview}>
-            For {appliesTo(form)}, {form.repeats ? "every" : "the first"}{" "}
-            {form.start_on === "ticket_created" ? "ticket creation" : point(form.start_on, form.start_value)} must be
-            followed by {point(form.stop_on, form.stop_value)} within {workingDays(form.budget_days)}.
+            For {appliesTo(form)}: {point(form.stop_on, form.stop_value)} must follow {point(form.start_on, form.start_value)}{" "}
+            within {workingDays(form.budget_days)} ({form.repeats ? "each time" : "first time only"}).
           </Text>
           <Switch
             disabled={!canEdit}

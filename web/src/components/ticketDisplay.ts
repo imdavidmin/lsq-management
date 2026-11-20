@@ -55,6 +55,9 @@ export function lastEventLabel(e?: Event): string {
     case "classify": return "Classified";
     case "marker": return humanize(e.to_value);
     case "attest": return "Attested";
+    case "schedule": return "Scheduled";
+    case "flag": return e.to_value === "needs_contractor:1" ? "Contractor needed" : "Contractor not needed";
+    case "duplicate": return "Marked duplicate";
     case "chase": return "Chased";
     default: return humanize(e.type ?? "Updated");
   }

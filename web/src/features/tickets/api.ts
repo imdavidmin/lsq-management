@@ -45,7 +45,7 @@ export function useCreateTicket() {
 export function usePatchTicket(id: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Partial<Pick<Ticket, "status" | "category" | "needs_contractor">>) =>
+    mutationFn: (body: Partial<Pick<Ticket, "status" | "category" | "needs_contractor" | "duplicate_of">>) =>
       request<Ticket>(`/tickets/${id}`, { method: "PATCH", body }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["ticket", id] });
@@ -69,5 +69,36 @@ export function useAddMarker(id: number) {
     mutationFn: (notes: string) =>
       request<Event>(`/tickets/${id}/markers`, { method: "POST", body: { marker: "attended", notes } }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["ticket", id] }),
+  });
+}
+
+type TriageBody = {
+  category: string;
+  needs_contractor: boolean;
+  status?: string;
+  date?: string;
+  note?: string;
+};
+
+export function useTriage(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: TriageBody) => request<Ticket>(`/tickets/${id}/triage`, { method: "POST", body }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["ticket", id] });
+      void qc.invalidateQueries({ queryKey: ["tickets"] });
+    },
+  });
+}
+
+export function useSchedule(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { date: string; note: string }) =>
+      request<Event>(`/tickets/${id}/schedule`, { method: "POST", body }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["ticket", id] });
+      void qc.invalidateQueries({ queryKey: ["tickets"] });
+    },
   });
 }
