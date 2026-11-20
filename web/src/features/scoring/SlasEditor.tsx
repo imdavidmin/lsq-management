@@ -58,12 +58,15 @@ const KIND_LABEL: Record<SlaKind, string> = {
   status: "status becomes",
   event_by: "an event by",
   marker: "marker",
+  scheduled: "scheduled date arrives",
+  flag: "flag set",
+  next_step: "next step recorded",
 };
 
 const words = (v: string) => v.replace(/_/g, " ");
 const workingDays = (n: number) => `${n} working day${n === 1 ? "" : "s"}`;
 const point = (kind: SlaKind, value: string | null) =>
-  kind === "ticket_created" ? "created" : words(value ?? "?");
+  value ? words(value) : KIND_LABEL[kind];
 
 const appliesTo = (s: SlaDraft) =>
   [

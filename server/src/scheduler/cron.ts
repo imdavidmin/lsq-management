@@ -1,5 +1,6 @@
 import type { Env } from "../env";
 import { all, run } from "../db/client";
+import { emailRoles } from "../lib/emailRoles";
 import { applies, instances, type SlaDef, type SlaEvent, type SlaTicket } from "../lib/sla";
 import { isWorkingDay, workingDaysBetween } from "../lib/workdays";
 import { layout, render, sendMail } from "../../../common/mail";
@@ -80,15 +81,15 @@ export async function chasePass(env: Env, now: Date): Promise<{ chased: number }
 export async function reminderPass(env: Env, now: Date): Promise<{ due: number }> {
   if (!isWorkingDay(now)) return { due: 0 };
   const nowIso = now.toISOString();
-  const [slas, tickets, events, agents] = await Promise.all([
+  const [slas, tickets, events, agents, resolveRole] = await Promise.all([
     all<SlaDef & { name: string }>(env.DB, "SELECT * FROM slas WHERE active = 1 ORDER BY id"),
     all<Omit<SlaTicket, "events"> & { id: number; title: string }>(
       env.DB,
       "SELECT id, title, category, needs_contractor, created_at FROM tickets WHERE status IN ('open', 'pending_3rd_party') ORDER BY id"
     ),
-    all<SlaEvent & { subject_id: number }>(
+    all<SlaEvent & { subject_id: number; actor_id: number | null; actor_email: string | null }>(
       env.DB,
-      `SELECT e.subject_id, e.at, e.actor_role, e.type, e.to_value FROM events e
+      `SELECT e.subject_id, e.at, e.actor_id, e.actor_email, e.actor_role, e.type, e.to_value FROM events e
          JOIN tickets t ON e.subject_type = 'ticket' AND e.subject_id = t.id
         WHERE t.status IN ('open', 'pending_3rd_party') ORDER BY e.at, e.id`
     ),
@@ -96,11 +97,12 @@ export async function reminderPass(env: Env, now: Date): Promise<{ due: number }
       env.DB,
       "SELECT DISTINCT a.email FROM accounts a JOIN grants g ON g.account_id = a.id WHERE g.role_key = 'agent' AND a.active = 1"
     ),
+    emailRoles(env.DB),
   ]);
 
   const due: { id: number; title: string; note: string }[] = [];
   for (const t of tickets) {
-    const ticket = { ...t, events: events.filter((e) => e.subject_id === t.id) };
+    const ticket = { ...t, events: events.filter((e) => e.subject_id === t.id).map(resolveRole) };
     for (const s of slas.filter((s) => applies(s, ticket))) {
       if (instances(s, ticket, nowIso).some((i) => i.outcome === "running" && i.days === s.budget_days)) {
         due.push({ id: t.id, title: t.title, note: s.name });

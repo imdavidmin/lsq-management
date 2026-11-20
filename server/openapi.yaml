@@ -224,7 +224,6 @@ paths:
                 status: { $ref: "#/components/schemas/TicketStatus" }
                 category: { type: string }
                 needs_contractor: { type: boolean }
-                is_duplicate: { type: boolean }
       responses:
         "200":
           content:
@@ -1511,7 +1510,7 @@ components:
 
     TicketStatus:
       type: string
-      enum: [open, pending_3rd_party, resolved, closed]
+      enum: [open, awaiting_resident, pending_3rd_party, awaiting_board, resolved, closed]
     Ticket:
       type: object
       properties:
@@ -1533,7 +1532,7 @@ components:
         category: { type: string, nullable: true }
         classified_by: { type: string, enum: [resident, agent, board, admin, ai] }
         needs_contractor: { type: boolean }
-        is_duplicate: { type: boolean }
+        duplicate_of: { type: integer, nullable: true, description: "The older ticket this one duplicates (D42)" }
         status: { $ref: "#/components/schemas/TicketStatus" }
         created_at: { type: string, format: date-time }
         resolved_at: { type: string, format: date-time, nullable: true }
@@ -1543,7 +1542,8 @@ components:
           nullable: true
           description: >-
             Soonest running SLA (D21, D36), on list and detail reads. Null when
-            none is running, the ticket is resolved/closed, or the caller lacks
+            none is running, the ticket is resolved/closed or awaiting the
+            resident/board (D39), or the caller lacks
             `sla:read`.
           properties:
             sla_id: { type: integer }
@@ -1584,7 +1584,7 @@ components:
         type:
           {
             type: string,
-            enum: [comment, classify, status, attest, chase, marker, config, snapshot],
+            enum: [comment, classify, status, flag, schedule, duplicate, attest, chase, marker, config, snapshot],
           }
         from_value: { type: string, nullable: true }
         to_value: { type: string, nullable: true }
@@ -1653,8 +1653,8 @@ components:
         description: { type: string, nullable: true }
     SlaKind:
       type: string
-      enum: [ticket_created, status, event_by, marker]
-      description: Start/stop kinds (common/sla.ts); ticket_created can only start.
+      enum: [ticket_created, scheduled, status, event_by, marker, flag, next_step]
+      description: Start/stop kinds (common/sla.ts); ticket_created and scheduled only start, next_step only stops.
     Sla:
       type: object
       required: [id, name, metric_key, category, needs_contractor, start_on, start_value, stop_on, stop_value, budget_days, repeats, active, description]

@@ -1,6 +1,7 @@
 import type { Env } from "../../env";
 import { all, one, run } from "../../db/client";
 import { ROLE_GROUPS, SETTINGS, type SettingKey } from "../../../../common/sla";
+import { emailRoles } from "../../lib/emailRoles";
 import { applies, instances, ticketPasses, type Instance, type SlaEvent, type SlaTicket } from "../../lib/sla";
 
 export interface MetricRow {
@@ -201,7 +202,6 @@ interface ScoredTicket {
   title: string;
   category: string | null;
   needs_contractor: number;
-  is_duplicate: number;
   created_at: string;
   events: (SlaEvent & { id: number })[];
 }
@@ -217,7 +217,7 @@ export interface MetricScore {
 }
 
 // Site-inspection defects in scope, and whether staff raised one (its first event is the creator's).
-const inspectionDefects = (ts: ScoredTicket[]) => ts.filter((t) => t.category === "site_defect" && !t.is_duplicate);
+const inspectionDefects = (ts: ScoredTicket[]) => ts.filter((t) => t.category === "site_defect");
 const raisedByStaff = (t: ScoredTicket) => (ROLE_GROUPS.staff as readonly string[]).includes(t.events[0]?.actor_role ?? "");
 
 // A ticket's instances of every applicable SLA, labelled for display.
@@ -238,20 +238,20 @@ export async function evaluateYear(env: Env, year: number, now: Date) {
   const ongoing = now.toISOString() < to;
   const nowIso = now.toISOString();
 
-  const [metrics, slas, tickets, events, stored, surveys] = await Promise.all([
+  const [metrics, slas, tickets, events, stored, surveys, resolveRole] = await Promise.all([
     all<MetricRow>(env.DB, "SELECT * FROM metrics WHERE active = 1 ORDER BY key"),
     all<SlaRow>(env.DB, "SELECT * FROM slas WHERE active = 1 ORDER BY id"),
     all<Omit<ScoredTicket, "events">>(
       env.DB,
-      "SELECT id, title, category, needs_contractor, is_duplicate, created_at FROM tickets WHERE created_at >= ? AND created_at < ? ORDER BY id",
+      "SELECT id, title, category, needs_contractor, created_at FROM tickets WHERE created_at >= ? AND created_at < ? AND duplicate_of IS NULL ORDER BY id",
       from,
       to
     ),
-    all<SlaEvent & { id: number; subject_id: number }>(
+    all<SlaEvent & { id: number; subject_id: number; actor_id: number | null; actor_email: string | null }>(
       env.DB,
-      `SELECT e.id, e.subject_id, e.at, e.actor_role, e.type, e.to_value FROM events e
+      `SELECT e.id, e.subject_id, e.at, e.actor_id, e.actor_email, e.actor_role, e.type, e.to_value FROM events e
          JOIN tickets t ON e.subject_type = 'ticket' AND e.subject_id = t.id
-        WHERE t.created_at >= ? AND t.created_at < ? ORDER BY e.at, e.id`,
+        WHERE t.created_at >= ? AND t.created_at < ? AND t.duplicate_of IS NULL ORDER BY e.at, e.id`,
       from,
       to
     ),
@@ -268,10 +268,11 @@ export async function evaluateYear(env: Env, year: number, now: Date) {
       "SELECT r.answers FROM survey_responses r JOIN surveys s ON s.id = r.survey_id WHERE s.service_year = ? AND r.is_outlier = 0",
       year
     ),
+    emailRoles(env.DB),
   ]);
 
   const byTicket = new Map<number, ScoredTicket>(tickets.map((t) => [t.id, { ...t, events: [] }]));
-  for (const e of events) byTicket.get(e.subject_id)?.events.push(e);
+  for (const e of events) byTicket.get(e.subject_id)?.events.push(resolveRole(e));
   const scored = [...byTicket.values()];
   const storedBy = new Map(stored.map((v) => [v.metric_key, v]));
   const answers = surveys.map((r) => JSON.parse(r.answers) as Record<string, number>);
@@ -362,19 +363,23 @@ export async function metricDetail(env: Env, year: number, key: string, now: Dat
 
 // One ticket's SLA instances, for the ticket page.
 export async function ticketSlas(env: Env, id: number, now: Date) {
-  const t = await one<{ category: string | null; needs_contractor: number; created_at: string }>(
+  const t = await one<{ category: string | null; needs_contractor: number; created_at: string; duplicate_of: number | null }>(
     env.DB,
-    "SELECT category, needs_contractor, created_at FROM tickets WHERE id = ?",
+    "SELECT category, needs_contractor, created_at, duplicate_of FROM tickets WHERE id = ?",
     id
   );
   if (!t) return null;
-  const events = await all<SlaEvent>(
-    env.DB,
-    "SELECT at, actor_role, type, to_value FROM events WHERE subject_type = 'ticket' AND subject_id = ? ORDER BY at, id",
-    id
-  );
-  const slas = await all<SlaRow>(env.DB, "SELECT * FROM slas WHERE active = 1 ORDER BY id");
-  return namedInstances(slas, { ...t, events }, now.toISOString());
+  if (t.duplicate_of) return []; // D42
+  const [resolveRole, rows, slas] = await Promise.all([
+    emailRoles(env.DB),
+    all<SlaEvent & { actor_id: number | null; actor_email: string | null }>(
+      env.DB,
+      "SELECT at, actor_id, actor_email, actor_role, type, to_value FROM events WHERE subject_type = 'ticket' AND subject_id = ? ORDER BY at, id",
+      id
+    ),
+    all<SlaRow>(env.DB, "SELECT * FROM slas WHERE active = 1 ORDER BY id"),
+  ]);
+  return namedInstances(slas, { ...t, events: rows.map(resolveRole) }, now.toISOString());
 }
 
 // ---- year-end snapshots (D21) ----------------------------------------------

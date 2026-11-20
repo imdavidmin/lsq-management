@@ -23,7 +23,7 @@ describe("scoring — seeded SLAs (D21)", () => {
     const { results } = await env.DB.prepare(
       "SELECT s.*, m.source FROM slas s JOIN metrics m ON m.key = s.metric_key"
     ).all<SlaRow>();
-    expect(results.length).toBe(7);
+    expect(results.length).toBe(9);
     for (const s of results) {
       expect(s.source, s.name).toBe("auto");
       expect(valid(s.start_on, s.start_value), `${s.name} start`).toBe(true);
@@ -77,7 +77,7 @@ describe("scoring — SLA + settings API", () => {
     ]);
 
     const agent = await login("sla-agent@lsq.test", "agent", "estate", null);
-    expect(((await (await req("/api/slas", agent.cookie)).json()) as any[]).length).toBe(8);
+    expect(((await (await req("/api/slas", agent.cookie)).json()) as any[]).length).toBe(10);
     expect((await req(`/api/slas/${row.id}`, agent.cookie, "PATCH", { active: true })).status).toBe(403);
   });
 
@@ -235,6 +235,60 @@ describe("SLA evaluator", () => {
     expect(nextDue(slas, { ...t, events: [...t.events, ev("2026-11-03T09:00Z", "agent")] }, "2026-11-05T12:00Z")).toBeNull();
   });
 
+  it("paused statuses (awaiting resident/board) don't count working days (D39)", () => {
+    const status = (at: string, to: string) => ev(at, "system", "status", to); // system: not a staff stop
+    const t = (events: ReturnType<typeof ev>[]) => ticket("2026-11-02T09:00Z", events);
+    // Paused Tue 3rd to Fri 6th: 5 wd elapsed by Mon 9th, 3 of them paused.
+    const closed = [status("2026-11-03T10:00Z", "awaiting_resident"), status("2026-11-06T10:00Z", "open")];
+    expect(outcomes(ack, t([...closed, ev("2026-11-09T10:00Z", "agent")]), "2026-12-01")).toEqual([["met", 2]]);
+    // An open span freezes the clock at its start.
+    expect(outcomes(ack, t([status("2026-11-03T10:00Z", "awaiting_board")]), "2026-11-20T00:00Z")).toEqual([["running", 1]]);
+    // An instance starting inside a pause counts nothing until hand-back (scheduled date during awaiting_resident).
+    const sched = def({ start_on: "scheduled", stop_on: "next_step" });
+    const inPause = t([ev("2026-11-03T10:00Z", "agent", "schedule", "2026-11-10"), status("2026-11-09T10:00Z", "awaiting_resident"), status("2026-11-12T10:00Z", "open")]);
+    expect(instances(sched, inPause, "2026-12-01").map((i) => [i.outcome, i.days])).toEqual([["met", 0]]);
+    // A pause after the stop has no effect.
+    expect(outcomes(ack, t([ev("2026-11-03T09:00Z", "agent"), status("2026-11-04T10:00Z", "awaiting_resident")]), "2026-12-01")).toEqual([["met", 1]]);
+  });
+
+  it("next_step stops on a status or schedule event, not a comment or flag (D41)", () => {
+    const sla = def({ start_on: "status", start_value: "pending_3rd_party", stop_on: "next_step", repeats: 1 });
+    const start = ev("2026-11-02T10:00Z", "agent", "status", "pending_3rd_party");
+    const run = (e: ReturnType<typeof ev>) => outcomes(sla, ticket("2026-11-02T09:00Z", [start, e]), "2026-11-03T12:00Z");
+    expect(run(ev("2026-11-03T09:00Z", "agent"))).toEqual([["running", 1]]);
+    expect(run(ev("2026-11-03T09:00Z", "agent", "flag", "needs_contractor:1"))).toEqual([["running", 1]]);
+    expect(run(ev("2026-11-03T09:00Z", "agent", "status", "open"))).toEqual([["met", 1]]);
+    expect(run(ev("2026-11-03T09:00Z", "agent", "schedule", "2026-11-20"))).toEqual([["met", 1]]);
+  });
+
+  it("scheduled starts on the date, not when written; replaced or cancelled schedules don't start (D41)", () => {
+    const sla = def({ start_on: "scheduled", stop_on: "next_step", repeats: 1 });
+    const sched = (at: string, date: string) => ev(at, "agent", "schedule", date);
+    const run = (events: ReturnType<typeof ev>[], now: string) => instances(sla, ticket("2026-11-02T09:00Z", events), now).map((i) => [i.start_at, i.outcome]);
+    const a = sched("2026-11-03T10:00Z", "2026-11-10");
+    expect(run([a], "2026-11-09T12:00Z")).toEqual([]);
+    expect(run([a], "2026-11-13T12:00Z")).toEqual([["2026-11-10T00:00:00.000Z", "breached"]]);
+    // Re-scheduled before the date: only the new one starts.
+    const b = sched("2026-11-05T10:00Z", "2026-11-17");
+    expect(run([a, b], "2026-11-18T12:00Z")).toEqual([["2026-11-17T00:00:00.000Z", "running"]]);
+    // Re-scheduled after the date: the new schedule stops the first and starts its own.
+    const c = sched("2026-11-12T10:00Z", "2026-11-20");
+    expect(run([a, c], "2026-11-23T12:00Z")).toEqual([["2026-11-10T00:00:00.000Z", "met"], ["2026-11-20T00:00:00.000Z", "running"]]);
+    // A same-day date doesn't stop itself.
+    expect(run([sched("2026-11-10T10:00Z", "2026-11-10")], "2026-11-10T12:00Z")).toEqual([["2026-11-10T10:00:00.000Z", "running"]]);
+    // Resolving or closing before the date cancels it.
+    expect(run([a, ev("2026-11-05T10:00Z", "agent", "status", "resolved")], "2026-11-12T12:00Z")).toEqual([]);
+    // Malformed or missing dates start nothing and don't throw.
+    expect(run([sched("2026-11-03T10:00Z", "next tuesday"), ev("2026-11-03T10:00Z", "agent", "schedule", null as any)], "2026-11-13T12:00Z")).toEqual([]);
+  });
+
+  it("a flag start begins at needs_contractor:1, not at creation (D40)", () => {
+    const sla = def({ start_on: "flag", start_value: "needs_contractor", stop_on: "marker", stop_value: "enquiry_sent" });
+    const t = ticket("2026-11-02T09:00Z", [ev("2026-11-04T10:00Z", "agent", "flag", "needs_contractor:1"), ev("2026-11-05T10:00Z", "agent", "marker", "enquiry_sent")]);
+    expect(instances(sla, t, "2026-12-01").map((i) => [i.start_at, i.outcome])).toEqual([["2026-11-04T10:00Z", "met"]]);
+    expect(instances(sla, ticket("2026-11-02T09:00Z", [ev("2026-11-04T10:00Z", "agent", "flag", "needs_contractor:0")]), "2026-12-01")).toEqual([]);
+  });
+
   it("a board member's message counts as a resident's (D37)", () => {
     const sla = def({ start_on: "event_by", start_value: "resident", repeats: 1 });
     const t = ticket("2026-11-02T09:00Z", [ev("2026-11-02T10:00Z", "board"), ev("2026-11-02T11:00Z", "agent")]);
@@ -270,9 +324,9 @@ describe("scoring — /score", () => {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO tickets (id, title, status, classified_by, created_at) VALUES (7001, 'a', 'open', 'agent', ?), (7002, 'b', 'open', 'agent', ?)").bind(created, created),
       env.DB.prepare(
-        `INSERT INTO events (subject_type, subject_id, at, actor_role, type, source) VALUES
-           ('ticket', 7001, ?, 'resident', 'comment', 'ui'), ('ticket', 7001, ?, 'agent', 'comment', 'ui'),
-           ('ticket', 7002, ?, 'resident', 'comment', 'ui'), ('ticket', 7002, ?, 'agent', 'comment', 'ui')`
+        `INSERT INTO events (subject_type, subject_id, at, actor_role, type, to_value, source) VALUES
+           ('ticket', 7001, ?, 'resident', 'comment', NULL, 'ui'), ('ticket', 7001, ?, 'agent', 'marker', 'triaged', 'ui'),
+           ('ticket', 7002, ?, 'resident', 'comment', NULL, 'ui'), ('ticket', 7002, ?, 'agent', 'marker', 'triaged', 'ui')`
       ).bind(created, created, created, late),
     ]);
     const score = (await (await req("/api/score", agent.cookie)).json()) as any;
@@ -302,6 +356,44 @@ describe("scoring — /score", () => {
     expect((await req("/api/score/metrics/nope", agent.cookie)).status).toBe(404);
     expect((await req("/api/score/metrics/res.ticket_acknowledgement", resident.cookie)).status).toBe(403);
   });
+
+  it("resolves an email sender's role at read time (D43)", async () => {
+    const agent = await login("score-d43@lsq.test", "agent", "estate", null);
+    const created = "2026-01-05T09:00:00.000Z";
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO senders (match_type, match_value, org_id, status, first_seen, last_seen) VALUES ('email', 'bob@acme.test', NULL, 'new', ?, ?)").bind(created, created),
+      env.DB.prepare("INSERT INTO tickets (id, title, status, needs_contractor, classified_by, created_at) VALUES (7101, 'c', 'open', 1, 'agent', ?)").bind(created),
+      env.DB.prepare(
+        `INSERT INTO events (subject_type, subject_id, at, actor_email, actor_role, type, source)
+           VALUES ('ticket', 7101, ?, 'bob@acme.test', NULL, 'comment', 'email')`
+      ).bind(created),
+    ]);
+    const names = async () => ((await (await req("/api/tickets/7101/slas", agent.cookie)).json()) as any[]).map((s) => s.name);
+    expect(await names()).not.toContain("Reply to contractor");
+
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO organizations (id, name, kind) VALUES (7101, 'Acme', 'contractor')"),
+      env.DB.prepare("INSERT INTO senders (match_type, match_value, org_id, status, first_seen, last_seen) VALUES ('domain', 'acme.test', 7101, 'linked', ?, ?)").bind(created, created),
+    ]);
+    expect(await names()).toContain("Reply to contractor");
+    const stored = await env.DB.prepare("SELECT actor_role FROM events WHERE subject_id = 7101").first<{ actor_role: string | null }>();
+    expect(stored!.actor_role).toBeNull();
+  });
+
+  it("leaves duplicates out of scoring and per-ticket SLAs (D42)", async () => {
+    const agent = await login("score-d42@lsq.test", "agent", "estate", null);
+    const y = ((await (await req("/api/score", agent.cookie)).json()) as any).service_year;
+    const created = `${y}-08-03T09:00:00.000Z`;
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO tickets (id, title, status, classified_by, created_at) VALUES (7201, 'orig', 'open', 'agent', ?)").bind(created),
+      env.DB.prepare("INSERT INTO tickets (id, title, status, classified_by, created_at, duplicate_of) VALUES (7202, 'dup', 'closed', 'agent', ?, 7201)").bind(created),
+    ]);
+    const detail = (await (await req("/api/score/metrics/res.ticket_acknowledgement", agent.cookie)).json()) as any;
+    expect(detail.tickets.map((t: any) => t.id)).toContain(7201);
+    expect(detail.tickets.map((t: any) => t.id)).not.toContain(7202);
+    expect(await (await req("/api/tickets/7202/slas", agent.cookie)).json()).toEqual([]);
+    expect(((await (await req("/api/tickets/7201/slas", agent.cookie)).json()) as any[]).length).toBeGreaterThan(0);
+  });
 });
 
 describe("scoring — year-end snapshots", () => {
@@ -321,7 +413,7 @@ describe("scoring — year-end snapshots", () => {
     expect(file.headers.get("content-disposition")).toContain("attachment");
     const body = (await file.json()) as any;
     expect(body.score.service_year).toBe(y - 1);
-    expect(body.slas.length).toBe(7);
+    expect(body.slas.length).toBe(9);
 
     const ev = await env.DB.prepare("SELECT to_value FROM events WHERE subject_type = 'score' AND type = 'snapshot'").first<any>();
     expect(ev.to_value).toBe(snap.id);

@@ -119,9 +119,9 @@ CREATE TABLE tickets (
   classified_by TEXT NOT NULL DEFAULT 'resident'
                 CHECK (classified_by IN ('resident','agent','board','admin','ai')),
   needs_contractor INTEGER NOT NULL DEFAULT 0,
-  is_duplicate  INTEGER NOT NULL DEFAULT 0,
+  duplicate_of  INTEGER REFERENCES tickets(id), -- D42: set = older ticket this one duplicates
   status        TEXT NOT NULL DEFAULT 'open'
-                CHECK (status IN ('open','pending_3rd_party','resolved','closed')),
+                CHECK (status IN ('open','awaiting_resident','pending_3rd_party','awaiting_board','resolved','closed')),
   created_at    TEXT NOT NULL,
   resolved_at   TEXT,
   closed_at     TEXT
@@ -141,8 +141,8 @@ CREATE TABLE events (
   at           TEXT NOT NULL,
   actor_id     INTEGER REFERENCES accounts(id), -- null if unknown email
   actor_email  TEXT,                            -- raw From when actor unknown
-  actor_role   TEXT,                            -- resident|agent|admin|site_staff|contractor|system
-  type         TEXT NOT NULL,                   -- comment|classify|status|marker|config|attest|chase|snapshot
+  actor_role   TEXT,                            -- resident|agent|admin|site_staff|contractor|system; NULL = unknown sender, resolved at read (D43)
+  type         TEXT NOT NULL,                   -- comment|classify|status|marker|flag|schedule|duplicate|config|attest|chase|snapshot
   from_value   TEXT,
   to_value     TEXT,
   body         TEXT,
@@ -211,9 +211,9 @@ CREATE TABLE slas (
   metric_key       TEXT NOT NULL REFERENCES metrics(key),
   category         TEXT,                 -- NULL = any category
   needs_contractor INTEGER,              -- NULL = any; else 0/1
-  start_on         TEXT NOT NULL CHECK (start_on IN ('ticket_created','status','event_by','marker')),
+  start_on         TEXT NOT NULL CHECK (start_on IN ('ticket_created','scheduled','status','event_by','marker','flag')),
   start_value      TEXT,
-  stop_on          TEXT NOT NULL CHECK (stop_on IN ('status','event_by','marker')),
+  stop_on          TEXT NOT NULL CHECK (stop_on IN ('status','event_by','marker','flag','next_step')),
   stop_value       TEXT,
   budget_days      INTEGER NOT NULL CHECK (budget_days > 0),
   repeats          INTEGER NOT NULL DEFAULT 0,

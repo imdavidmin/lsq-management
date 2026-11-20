@@ -22,7 +22,7 @@ const ticket: TicketDetail = {
   category: "reactive_fault",
   classified_by: "agent",
   needs_contractor: true,
-  is_duplicate: false,
+  duplicate_of: null,
   building_id: 1,
   unit_id: 1,
   created_at: "2026-08-14T16:40:00Z",

@@ -14,5 +14,5 @@ export const CATEGORIES = [
 
 // Ticket lifecycle. Server validates against this (zod) and stores it; web
 // renders the status dropdown from it.
-export const STATUSES = ["open", "pending_3rd_party", "resolved", "closed"] as const;
+export const STATUSES = ["open", "awaiting_resident", "pending_3rd_party", "awaiting_board", "resolved", "closed"] as const;
 export type TicketStatus = (typeof STATUSES)[number];

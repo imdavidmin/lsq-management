@@ -20,7 +20,7 @@ const base: Ticket & { events: Event[] } = {
   category: "site_defect",
   classified_by: "agent",
   needs_contractor: false,
-  is_duplicate: false,
+  duplicate_of: null,
   created_at: "2026-08-01T09:00:00Z",
   events,
 };

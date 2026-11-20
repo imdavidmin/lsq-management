@@ -3,7 +3,8 @@ import { all, one, run } from "../../db/client";
 import type { Grant } from "../../db/client";
 import type { TicketStatus } from "../../../../common/tickets";
 import { layout, paragraphs, render, sendMail } from "../../../../common/mail";
-import { nextDue, type SlaDef, type SlaEvent } from "../../lib/sla";
+import { emailRoles } from "../../lib/emailRoles";
+import { nextDue, type SlaDef } from "../../lib/sla";
 
 export interface Ticket {
   id: number;
@@ -14,7 +15,7 @@ export interface Ticket {
   category: string | null;
   classified_by: string; // who last set the category (resident|agent|board|admin, or ai: D32)
   needs_contractor: number;
-  is_duplicate: number;
+  duplicate_of: number | null; // D42
   status: TicketStatus;
   created_at: string;
   resolved_at: string | null;
@@ -133,13 +134,18 @@ export async function listTickets(
   };
 }
 
-// Each ticket's soonest running SLA (D21, D36); resolved/closed tickets have none.
-export async function withSlaDue<T extends Ticket & { events: SlaEvent[] }>(env: Env, tickets: T[], now: Date) {
-  const slas = await all<SlaDef & { name: string }>(env.DB, "SELECT * FROM slas WHERE active = 1 ORDER BY id");
+const NO_SLA_DUE = ["resolved", "closed", "awaiting_resident", "awaiting_board"];
+// Each ticket's soonest running SLA (D21, D36); none once resolved/closed or
+// while the ball isn't with the agent (D39). Roles of email senders resolve at read (D43).
+export async function withSlaDue<T extends Ticket & { events: TicketEvent[] }>(env: Env, tickets: T[], now: Date) {
+  const [slas, resolveRole] = await Promise.all([
+    all<SlaDef & { name: string }>(env.DB, "SELECT * FROM slas WHERE active = 1 ORDER BY id"),
+    emailRoles(env.DB),
+  ]);
   const nowIso = now.toISOString();
   return tickets.map((t) => ({
     ...t,
-    sla_due: t.status === "resolved" || t.status === "closed" ? null : nextDue(slas, t, nowIso),
+    sla_due: NO_SLA_DUE.includes(t.status) ? null : nextDue(slas, { ...t, events: t.events.map(resolveRole) }, nowIso),
   }));
 }
 
@@ -295,7 +301,6 @@ export interface PatchInput {
   status?: string;
   category?: string;
   needs_contractor?: boolean;
-  is_duplicate?: boolean;
 }
 
 // Apply field changes and append one audit event per changed field.
@@ -336,18 +341,17 @@ export async function patchTicket(
     });
   }
 
-  for (const flag of ["needs_contractor", "is_duplicate"] as const) {
-    const next = p[flag];
-    if (next === undefined) continue;
-    const val = next ? 1 : 0;
-    if (val === ticket[flag]) continue;
-    await run(env.DB, `UPDATE tickets SET ${flag} = ? WHERE id = ?`, val, ticket.id);
-    await appendEvent(env, ticket.id, now, {
-      ...actor,
-      type: "status",
-      from_value: `${flag}:${ticket[flag]}`,
-      to_value: `${flag}:${val}`,
-    });
+  if (p.needs_contractor !== undefined) {
+    const val = p.needs_contractor ? 1 : 0;
+    if (val !== ticket.needs_contractor) {
+      await run(env.DB, "UPDATE tickets SET needs_contractor = ? WHERE id = ?", val, ticket.id);
+      await appendEvent(env, ticket.id, now, {
+        ...actor,
+        type: "flag",
+        from_value: `needs_contractor:${ticket.needs_contractor}`,
+        to_value: `needs_contractor:${val}`,
+      });
+    }
   }
 
   return (await getTicket(env, ticket.id))!;

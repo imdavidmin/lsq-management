@@ -177,7 +177,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1014, 'ticket', 102, '2025-09-04T13:48:00Z', 13, NULL, 'agent', 'status', 'open', 'resolved', NULL, 'ui'),
   (1015, 'ticket', 103, '2025-09-25T12:59:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Entry phone faulty. Found on the weekly site inspection.', 'ui'),
   (1016, 'ticket', 103, '2025-09-25T12:59:00Z', 13, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui'),
-  (1017, 'ticket', 103, '2025-09-25T12:59:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1017, 'ticket', 103, '2025-09-25T12:59:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1018, 'ticket', 103, '2025-09-26T13:10:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed fixit.co.uk to attend.', 'email'),
   (1019, 'ticket', 103, '2025-09-26T13:10:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email'),
   (1020, 'ticket', 103, '2025-09-29T14:58:00Z', NULL, 'jo@fixit.co.uk', 'contractor', 'comment', NULL, NULL, 'We can attend later this week — please confirm access.', 'email'),
@@ -194,7 +194,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1031, 'ticket', 105, '2025-10-08T10:41:00Z', 23, NULL, 'resident', 'comment', NULL, NULL, 'Damaged fence panel. Please can someone take a look?', 'ui'),
   (1032, 'ticket', 105, '2025-10-08T10:41:00Z', 23, NULL, 'resident', 'classify', NULL, 'site_defect', NULL, 'ui'),
   (1033, 'ticket', 105, '2025-10-10T08:16:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'ui'),
-  (1034, 'ticket', 105, '2025-10-10T08:16:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1034, 'ticket', 105, '2025-10-10T08:16:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1035, 'ticket', 105, '2025-10-10T15:01:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed fixit.co.uk to attend.', 'email'),
   (1036, 'ticket', 105, '2025-10-10T15:01:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email'),
   (1037, 'ticket', 105, '2025-10-14T10:56:00Z', NULL, 'jo@fixit.co.uk', 'contractor', 'comment', NULL, NULL, 'We can attend later this week — please confirm access.', 'email'),
@@ -209,7 +209,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1046, 'ticket', 106, '2025-10-24T14:48:00Z', 13, NULL, 'agent', 'status', 'open', 'resolved', NULL, 'ui'),
   (1047, 'ticket', 107, '2025-10-28T09:08:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Loose handrail on stairs. Found on the weekly site inspection.', 'ui'),
   (1048, 'ticket', 107, '2025-10-28T09:08:00Z', 13, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui'),
-  (1049, 'ticket', 107, '2025-10-28T09:08:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1049, 'ticket', 107, '2025-10-28T09:08:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1050, 'ticket', 107, '2025-10-31T10:04:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed fixit.co.uk to attend.', 'email'),
   (1051, 'ticket', 107, '2025-10-31T10:04:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email'),
   (1052, 'ticket', 107, '2025-11-04T10:19:00Z', NULL, 'jo@fixit.co.uk', 'contractor', 'comment', NULL, NULL, 'We can attend later this week — please confirm access.', 'email'),
@@ -234,7 +234,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1071, 'ticket', 110, '2026-01-08T12:18:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'ui'),
   (1072, 'ticket', 110, '2026-01-08T12:18:00Z', 13, NULL, 'agent', 'status', 'open', 'pending_3rd_party', NULL, 'ui'),
   (1073, 'ticket', 111, '2026-01-09T09:14:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'ui'),
-  (1074, 'ticket', 111, '2026-01-09T09:14:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1074, 'ticket', 111, '2026-01-09T09:14:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1075, 'ticket', 110, '2026-01-09T11:22:00Z', 22, NULL, 'resident', 'comment', NULL, NULL, 'Any update on this?', 'ui'),
   (1076, 'ticket', 111, '2026-01-12T08:15:00Z', 21, NULL, 'resident', 'comment', NULL, NULL, 'Any update on this?', 'ui'),
   (1077, 'ticket', 111, '2026-01-12T14:46:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed fixit.co.uk to attend.', 'email'),
@@ -253,11 +253,11 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1090, 'ticket', 113, '2026-01-27T10:39:00Z', 23, NULL, 'resident', 'comment', NULL, NULL, 'Power out in corridor. Please can someone take a look?', 'ui'),
   (1091, 'ticket', 113, '2026-01-27T10:39:00Z', 23, NULL, 'resident', 'classify', NULL, 'reactive_fault', NULL, 'ui'),
   (1092, 'ticket', 113, '2026-01-27T11:41:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'email'),
-  (1093, 'ticket', 113, '2026-01-27T11:41:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1093, 'ticket', 113, '2026-01-27T11:41:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1094, 'ticket', 113, '2026-01-29T11:16:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed aquaheat.co.uk to attend.', 'email'),
   (1095, 'ticket', 113, '2026-01-29T11:16:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email'),
   (1096, 'ticket', 112, '2026-01-29T12:15:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'email'),
-  (1097, 'ticket', 112, '2026-01-29T12:15:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1097, 'ticket', 112, '2026-01-29T12:15:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1098, 'ticket', 112, '2026-01-29T12:25:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed fixit.co.uk to attend.', 'email'),
   (1099, 'ticket', 112, '2026-01-29T12:25:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email'),
   (1100, 'ticket', 112, '2026-01-30T10:20:00Z', NULL, 'jo@fixit.co.uk', 'contractor', 'comment', NULL, NULL, 'We can attend later this week — please confirm access.', 'email'),
@@ -268,7 +268,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1106, 'ticket', 114, '2026-02-05T13:17:00Z', 22, NULL, 'resident', 'comment', NULL, NULL, 'Fire door not closing. Please can someone take a look?', 'ui'),
   (1107, 'ticket', 114, '2026-02-05T13:17:00Z', 22, NULL, 'resident', 'classify', NULL, 'site_defect', NULL, 'ui'),
   (1108, 'ticket', 114, '2026-02-05T14:25:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'ui'),
-  (1109, 'ticket', 114, '2026-02-05T14:25:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1109, 'ticket', 114, '2026-02-05T14:25:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1110, 'ticket', 114, '2026-02-05T15:18:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed fixit.co.uk to attend.', 'email'),
   (1111, 'ticket', 114, '2026-02-05T15:18:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email'),
   (1112, 'ticket', 114, '2026-02-06T08:04:00Z', 22, NULL, 'resident', 'comment', NULL, NULL, 'Any update on this?', 'ui'),
@@ -284,7 +284,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1122, 'ticket', 113, '2026-02-11T12:45:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Access confirmed, concierge will let you in.', 'email'),
   (1123, 'ticket', 116, '2026-02-13T13:48:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'Water stain on corridor ceiling. Found on the weekly site inspection.', 'ui'),
   (1124, 'ticket', 116, '2026-02-13T13:48:00Z', 24, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui'),
-  (1125, 'ticket', 116, '2026-02-13T13:48:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1125, 'ticket', 116, '2026-02-13T13:48:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1126, 'ticket', 114, '2026-02-13T15:23:00Z', 24, NULL, 'agent', 'marker', NULL, 'attended', 'Contractor attended and completed the repair.', 'ui'),
   (1127, 'ticket', 114, '2026-02-13T17:17:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Repair done; please let us know if anything''s still wrong.', 'ui'),
   (1128, 'ticket', 114, '2026-02-13T17:17:00Z', 13, NULL, 'agent', 'status', 'open', 'resolved', NULL, 'ui'),
@@ -305,7 +305,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1143, 'ticket', 117, '2026-03-05T10:17:00Z', 11, NULL, 'resident', 'comment', NULL, NULL, 'Communal heating off. Please can someone take a look?', 'ui'),
   (1144, 'ticket', 117, '2026-03-05T10:17:00Z', 11, NULL, 'resident', 'classify', NULL, 'reactive_fault', NULL, 'ui'),
   (1145, 'ticket', 117, '2026-03-05T12:43:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'email'),
-  (1146, 'ticket', 117, '2026-03-05T12:43:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1146, 'ticket', 117, '2026-03-05T12:43:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1147, 'ticket', 117, '2026-03-06T08:06:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed aquaheat.co.uk to attend.', 'email'),
   (1148, 'ticket', 117, '2026-03-06T08:06:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email'),
   (1150, 'ticket', 117, '2026-03-16T14:12:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Chasing the contractor for a date.', 'email'),
@@ -317,7 +317,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1156, 'ticket', 117, '2026-03-23T13:38:00Z', 13, NULL, 'agent', 'status', 'open', 'resolved', NULL, 'ui'),
   (1157, 'ticket', 118, '2026-03-24T12:40:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'Water stain on corridor ceiling. Found on the weekly site inspection.', 'ui'),
   (1158, 'ticket', 118, '2026-03-24T12:40:00Z', 24, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui'),
-  (1159, 'ticket', 118, '2026-03-24T12:40:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1159, 'ticket', 118, '2026-03-24T12:40:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1160, 'ticket', 118, '2026-03-27T15:51:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed fixit.co.uk to attend.', 'email'),
   (1161, 'ticket', 118, '2026-03-27T15:51:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email'),
   (1163, 'ticket', 118, '2026-04-07T03:15:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Chasing the contractor for a date.', 'email'),
@@ -339,7 +339,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1179, 'ticket', 120, '2026-05-22T10:22:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'email'),
   (1180, 'ticket', 122, '2026-05-26T09:41:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'Cracked paving by entrance. Found on the weekly site inspection.', 'ui'),
   (1181, 'ticket', 122, '2026-05-26T09:41:00Z', 24, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui'),
-  (1182, 'ticket', 122, '2026-05-26T09:41:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1182, 'ticket', 122, '2026-05-26T09:41:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1183, 'ticket', 120, '2026-05-26T11:47:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'This is now sorted.', 'ui'),
   (1184, 'ticket', 120, '2026-05-26T11:47:00Z', 13, NULL, 'agent', 'status', 'open', 'resolved', NULL, 'ui'),
   (1185, 'ticket', 122, '2026-05-27T08:34:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed fixit.co.uk to attend.', 'email'),
@@ -373,16 +373,16 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1213, 'ticket', 127, '2026-08-05T13:57:00Z', 23, NULL, 'resident', 'comment', NULL, NULL, 'Leak from ceiling. Please can someone take a look?', 'ui'),
   (1214, 'ticket', 127, '2026-08-05T13:57:00Z', 23, NULL, 'resident', 'classify', NULL, 'reactive_fault', NULL, 'ui'),
   (1215, 'ticket', 127, '2026-08-06T08:12:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'ui'),
-  (1216, 'ticket', 127, '2026-08-06T08:12:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1216, 'ticket', 127, '2026-08-06T08:12:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1217, 'ticket', 128, '2026-08-10T09:01:00Z', 12, NULL, 'resident', 'comment', NULL, NULL, 'Gym treadmill broken. Please can someone take a look?', 'ui'),
   (1218, 'ticket', 128, '2026-08-10T09:01:00Z', 12, NULL, 'resident', 'classify', NULL, 'communal_repair', NULL, 'ui'),
   (1219, 'ticket', 127, '2026-08-10T14:03:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed aquaheat.co.uk to attend.', 'email'),
   (1220, 'ticket', 127, '2026-08-10T14:03:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email'),
   (1221, 'ticket', 129, '2026-08-11T08:05:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Cracked paving by entrance. Found on the weekly site inspection.', 'ui'),
   (1222, 'ticket', 129, '2026-08-11T08:05:00Z', 13, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui'),
-  (1223, 'ticket', 129, '2026-08-11T08:05:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1223, 'ticket', 129, '2026-08-11T08:05:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1224, 'ticket', 128, '2026-08-11T15:09:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'ui'),
-  (1225, 'ticket', 128, '2026-08-11T15:09:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1225, 'ticket', 128, '2026-08-11T15:09:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1226, 'ticket', 128, '2026-08-11T15:19:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed fixit.co.uk to attend.', 'email'),
   (1227, 'ticket', 128, '2026-08-11T15:19:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email'),
   (1228, 'ticket', 130, '2026-08-12T08:59:00Z', 20, NULL, 'resident', 'comment', NULL, NULL, 'Leaves blocking podium drains. Please can someone take a look?', 'ui'),
@@ -396,7 +396,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1236, 'ticket', 130, '2026-08-13T16:57:00Z', 13, NULL, 'agent', 'status', 'open', 'resolved', NULL, 'ui'),
   (1237, 'ticket', 131, '2026-08-14T10:24:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Water stain on corridor ceiling. Found on the weekly site inspection.', 'ui'),
   (1238, 'ticket', 131, '2026-08-14T10:24:00Z', 13, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui'),
-  (1239, 'ticket', 131, '2026-08-14T10:24:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1239, 'ticket', 131, '2026-08-14T10:24:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1240, 'ticket', 126, '2026-08-14T10:31:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Third party has replied; arranging next steps.', 'ui'),
   (1241, 'ticket', 126, '2026-08-14T10:31:00Z', 13, NULL, 'agent', 'status', 'pending_3rd_party', 'open', NULL, 'ui'),
   (1242, 'ticket', 129, '2026-08-14T14:19:00Z', NULL, 'jo@fixit.co.uk', 'contractor', 'comment', NULL, NULL, 'We can attend later this week — please confirm access.', 'email'),
@@ -461,7 +461,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1303, 'ticket', 138, '2026-09-08T09:11:00Z', 12, NULL, 'resident', 'comment', NULL, NULL, 'Any update on this?', 'ui'),
   (1304, 'ticket', 139, '2026-09-08T11:55:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Fire door not closing. Found on the weekly site inspection.', 'ui'),
   (1305, 'ticket', 139, '2026-09-08T11:55:00Z', 13, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui'),
-  (1306, 'ticket', 139, '2026-09-08T11:55:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1306, 'ticket', 139, '2026-09-08T11:55:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1307, 'ticket', 138, '2026-09-08T12:41:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Cleaner has dealt with this.', 'ui'),
   (1308, 'ticket', 138, '2026-09-08T12:41:00Z', 13, NULL, 'agent', 'status', 'open', 'resolved', NULL, 'ui'),
   (1309, 'ticket', 140, '2026-09-09T09:00:00Z', 11, NULL, 'resident', 'comment', NULL, NULL, 'Communal heating off. Please can someone take a look?', 'ui'),
@@ -471,7 +471,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1313, 'ticket', 136, '2026-09-10T11:31:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'This is now sorted.', 'ui'),
   (1314, 'ticket', 136, '2026-09-10T11:31:00Z', 13, NULL, 'agent', 'status', 'open', 'resolved', NULL, 'ui'),
   (1315, 'ticket', 140, '2026-09-10T11:32:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'ui'),
-  (1316, 'ticket', 140, '2026-09-10T11:32:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1316, 'ticket', 140, '2026-09-10T11:32:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1317, 'ticket', 140, '2026-09-10T12:36:00Z', 11, NULL, 'resident', 'comment', NULL, NULL, 'Any update on this?', 'ui'),
   (1318, 'ticket', 137, '2026-09-10T14:24:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'email'),
   (1319, 'ticket', 139, '2026-09-10T14:53:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed fixit.co.uk to attend.', 'email'),
@@ -499,7 +499,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1341, 'ticket', 143, '2026-09-15T15:05:00Z', 13, NULL, 'agent', 'status', 'pending_3rd_party', 'open', NULL, 'ui'),
   (1342, 'ticket', 144, '2026-09-16T11:31:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Fire door not closing. Found on the weekly site inspection.', 'ui'),
   (1343, 'ticket', 144, '2026-09-16T11:31:00Z', 13, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui'),
-  (1344, 'ticket', 144, '2026-09-16T11:31:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1344, 'ticket', 144, '2026-09-16T11:31:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1345, 'ticket', 144, '2026-09-17T10:58:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed fixit.co.uk to attend.', 'email'),
   (1346, 'ticket', 144, '2026-09-17T10:58:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email'),
   (1347, 'ticket', 140, '2026-09-18T11:06:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Access confirmed, concierge will let you in.', 'email'),
@@ -511,12 +511,12 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1353, 'ticket', 144, '2026-09-21T16:16:00Z', NULL, 'jo@fixit.co.uk', 'contractor', 'comment', NULL, NULL, 'We can attend later this week — please confirm access.', 'email'),
   (1354, 'ticket', 146, '2026-09-22T09:06:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'Broken lobby light. Found on the weekly site inspection.', 'ui'),
   (1355, 'ticket', 146, '2026-09-22T09:06:00Z', 24, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui'),
-  (1356, 'ticket', 146, '2026-09-22T09:06:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1356, 'ticket', 146, '2026-09-22T09:06:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1357, 'ticket', 145, '2026-09-23T12:32:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'ui'),
-  (1358, 'ticket', 145, '2026-09-23T12:32:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1358, 'ticket', 145, '2026-09-23T12:32:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1359, 'ticket', 147, '2026-09-23T12:44:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'Water stain on corridor ceiling. Found on the weekly site inspection.', 'ui'),
   (1360, 'ticket', 147, '2026-09-23T12:44:00Z', 24, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui'),
-  (1361, 'ticket', 147, '2026-09-23T12:44:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1361, 'ticket', 147, '2026-09-23T12:44:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1362, 'ticket', 139, '2026-09-23T13:41:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Parts on order — contractor returning once they arrive.', 'ui'),
   (1363, 'ticket', 139, '2026-09-23T13:41:00Z', 13, NULL, 'agent', 'status', 'pending_3rd_party', 'open', NULL, 'ui'),
   (1364, 'ticket', 146, '2026-09-23T16:16:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed fixit.co.uk to attend.', 'email'),
@@ -577,13 +577,13 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1420, 'ticket', 151, '2026-10-07T15:17:00Z', 13, NULL, 'agent', 'status', 'open', 'resolved', NULL, 'ui'),
   (1421, 'ticket', 146, '2026-10-07T16:32:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Access confirmed, concierge will let you in.', 'email'),
   (1422, 'ticket', 152, '2026-10-08T12:09:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'email'),
-  (1423, 'ticket', 152, '2026-10-08T12:09:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1423, 'ticket', 152, '2026-10-08T12:09:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1424, 'ticket', 152, '2026-10-08T12:19:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed aquaheat.co.uk to attend.', 'email'),
   (1425, 'ticket', 152, '2026-10-08T12:19:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email'),
   (1426, 'ticket', 154, '2026-10-08T12:47:00Z', 12, NULL, 'resident', 'comment', NULL, NULL, 'Spillage in lift car. Please can someone take a look?', 'ui'),
   (1427, 'ticket', 154, '2026-10-08T12:47:00Z', 12, NULL, 'resident', 'classify', NULL, 'cleaning', NULL, 'ui'),
   (1428, 'ticket', 153, '2026-10-08T13:23:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'email'),
-  (1429, 'ticket', 153, '2026-10-08T13:23:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1429, 'ticket', 153, '2026-10-08T13:23:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1430, 'ticket', 153, '2026-10-08T13:33:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Emailed fixit.co.uk to attend.', 'email'),
   (1431, 'ticket', 153, '2026-10-08T13:33:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email'),
   (1432, 'ticket', 147, '2026-10-08T14:32:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Repair done; please let us know if anything''s still wrong.', 'ui'),
@@ -634,7 +634,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1478, 'ticket', 156, '2026-10-21T14:27:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Still waiting to hear back from the third party.', 'ui'),
   (1479, 'ticket', 162, '2026-10-22T08:55:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'Water stain on corridor ceiling. Found on the weekly site inspection.', 'ui'),
   (1480, 'ticket', 162, '2026-10-22T08:55:00Z', 24, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui'),
-  (1481, 'ticket', 162, '2026-10-22T08:55:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1481, 'ticket', 162, '2026-10-22T08:55:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1482, 'ticket', 152, '2026-10-22T12:17:00Z', 24, NULL, 'agent', 'marker', NULL, 'attended', 'Contractor attended and completed the repair.', 'ui'),
   (1483, 'ticket', 160, '2026-10-22T13:15:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'email'),
   (1484, 'ticket', 160, '2026-10-22T13:15:00Z', 13, NULL, 'agent', 'status', 'open', 'pending_3rd_party', NULL, 'ui'),
@@ -651,7 +651,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   (1495, 'ticket', 152, '2026-10-26T16:27:00Z', 13, NULL, 'agent', 'status', 'open', 'resolved', NULL, 'ui'),
   (1496, 'ticket', 165, '2026-10-27T10:30:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'Damaged fence panel. Found on the weekly site inspection.', 'ui'),
   (1497, 'ticket', 165, '2026-10-27T10:30:00Z', 24, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui'),
-  (1498, 'ticket', 165, '2026-10-27T10:30:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
+  (1498, 'ticket', 165, '2026-10-27T10:30:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui'),
   (1499, 'ticket', 164, '2026-10-27T11:09:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'ui'),
   (1500, 'ticket', 164, '2026-10-27T11:09:00Z', 13, NULL, 'agent', 'status', 'open', 'pending_3rd_party', NULL, 'ui'),
   (1501, 'ticket', 161, '2026-10-27T11:30:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Thanks for reporting this — we''re on it.', 'ui'),
@@ -759,12 +759,12 @@ INSERT OR IGNORE INTO metric_values (id, metric_key, service_year, value, result
 --   200 GreenScape  — domain registered: reply classified contractor, all clocks met.
 --   201 AquaHeat    — contractor asks to confirm a slot, agent goes quiet:
 --                     'Reply to contractor' + 'Chase silent contractor' breached.
---   202 Fixit       — operative replies from gmail: classed resident and queued in
---                     Unknown senders, so the contractor looks silent and
+--   202 Fixit       — operative replies from gmail: unknown sender, no role (D43), queued
+--                     in Unknown senders, so the contractor looks silent and
 --                     'Chase silent contractor' breaches. Link the sender to Fixit.
 --   203 WindowShine — domain not registered: the agent's enquiry isn't recognised
---                     (no marker), the reply is classed contractor by the business-
---                     domain fallback; its 'Reply to contractor' clock is running.
+--                     (no marker), the reply is from an unknown sender, so it has no
+--                     role (D43) and no 'Reply to contractor' clock starts.
 INSERT OR IGNORE INTO senders (id, match_type, match_value, org_id, status, hit_count, first_seen, last_seen) VALUES
   (6, 'domain', 'greenscape.co.uk',      2,    'linked', 2, '2026-10-20T14:31:00Z', '2026-10-22T16:40:00Z'),
   (7, 'email',  'steve.fixit@gmail.com', NULL, 'new',    1, '2026-11-02T17:48:00Z', '2026-11-02T17:48:00Z');
@@ -779,7 +779,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   -- 200 GreenScape: the happy path.
   (2000, 'ticket', 200, '2026-10-19T09:10:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'Hedges either side of the podium walkway are overhanging the path.', 'ui', 0, NULL),
   (2001, 'ticket', 200, '2026-10-19T09:10:00Z', 24, NULL, 'agent', 'classify', NULL, 'communal_repair', NULL, 'ui', 0, NULL),
-  (2002, 'ticket', 200, '2026-10-19T09:12:00Z', 24, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui', 0, NULL),
+  (2002, 'ticket', 200, '2026-10-19T09:12:00Z', 24, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui', 0, NULL),
   (2003, 'ticket', 200, '2026-10-19T10:02:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'Hi Mark, could GreenScape cut back the podium hedges this week? Ticket copied in.', 'email', 1, 'Agent asks GreenScape to cut back the podium hedges this week.'),
   (2004, 'ticket', 200, '2026-10-19T10:02:00Z', 24, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email', 0, NULL),
   (2005, 'ticket', 200, '2026-10-19T10:00:00Z', 24, NULL, 'agent', 'status', 'open', 'pending_3rd_party', NULL, 'ui', 0, NULL),
@@ -793,7 +793,7 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   -- 201 AquaHeat: contractor waiting on the agent.
   (2020, 'ticket', 201, '2026-10-28T08:20:00Z', 20, NULL, 'resident', 'comment', NULL, NULL, 'The HIU bangs loudly every morning when the heating comes on.', 'ui', 0, NULL),
   (2021, 'ticket', 201, '2026-10-28T08:20:00Z', 20, NULL, 'resident', 'classify', NULL, 'reactive_fault', NULL, 'ui', 0, NULL),
-  (2022, 'ticket', 201, '2026-10-28T10:00:00Z', 24, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui', 0, NULL),
+  (2022, 'ticket', 201, '2026-10-28T10:00:00Z', 24, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui', 0, NULL),
   (2023, 'ticket', 201, '2026-10-28T11:30:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'AquaHeat, please inspect the HIU in Flat 3.04 (banging on start-up).', 'email', 1, 'Agent asks AquaHeat to inspect a banging HIU in Flat 3.04.'),
   (2024, 'ticket', 201, '2026-10-28T11:30:00Z', 24, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email', 0, NULL),
   (2025, 'ticket', 201, '2026-10-28T11:28:00Z', 24, NULL, 'agent', 'status', 'open', 'pending_3rd_party', NULL, 'ui', 0, NULL),
@@ -803,18 +803,18 @@ INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_
   -- 202 Fixit: reply from a personal address goes unrecognised.
   (2040, 'ticket', 202, '2026-10-26T10:05:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Car park entry barrier is stuck in the raised position.', 'ui', 0, NULL),
   (2041, 'ticket', 202, '2026-10-26T10:05:00Z', 13, NULL, 'agent', 'classify', NULL, 'site_defect', NULL, 'ui', 0, NULL),
-  (2042, 'ticket', 202, '2026-10-26T10:07:00Z', 13, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui', 0, NULL),
+  (2042, 'ticket', 202, '2026-10-26T10:07:00Z', 13, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui', 0, NULL),
   (2043, 'ticket', 202, '2026-10-26T11:40:00Z', 13, NULL, 'agent', 'comment', NULL, NULL, 'Fixit, please attend to repair the car park barrier.', 'email', 1, 'Agent asks Fixit to repair the car park barrier.'),
   (2044, 'ticket', 202, '2026-10-26T11:40:00Z', 13, NULL, 'agent', 'marker', NULL, 'enquiry_sent', NULL, 'email', 0, NULL),
   (2045, 'ticket', 202, '2026-10-26T11:38:00Z', 13, NULL, 'agent', 'status', 'open', 'pending_3rd_party', NULL, 'ui', 0, NULL),
-  (2046, 'ticket', 202, '2026-11-02T17:48:00Z', NULL, 'steve.fixit@gmail.com', 'resident', 'comment', NULL, NULL, 'Hi, Steve from Fixit. I can come Thursday to look at the barrier motor.', 'email', 1, 'Steve (Fixit) offers to inspect the barrier motor on Thursday.'),
+  (2046, 'ticket', 202, '2026-11-02T17:48:00Z', NULL, 'steve.fixit@gmail.com', NULL, 'comment', NULL, NULL, 'Hi, Steve from Fixit. I can come Thursday to look at the barrier motor.', 'email', 1, 'Steve (Fixit) offers to inspect the barrier motor on Thursday.'),
 
   -- 203 WindowShine: unregistered contractor domain.
   (2060, 'ticket', 203, '2026-10-29T09:30:00Z', 22, NULL, 'resident', 'comment', NULL, NULL, 'Windows on the 2nd floor landing were left streaky after this week''s clean.', 'ui', 0, NULL),
   (2061, 'ticket', 203, '2026-10-29T09:30:00Z', 22, NULL, 'resident', 'classify', NULL, 'cleaning', NULL, 'ui', 0, NULL),
-  (2062, 'ticket', 203, '2026-10-29T10:15:00Z', 24, NULL, 'agent', 'status', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui', 0, NULL),
+  (2062, 'ticket', 203, '2026-10-29T10:15:00Z', 24, NULL, 'agent', 'flag', 'needs_contractor:0', 'needs_contractor:1', NULL, 'ui', 0, NULL),
   (2063, 'ticket', 203, '2026-10-29T11:00:00Z', 24, NULL, 'agent', 'comment', NULL, NULL, 'WindowShine, please re-clean the 2nd floor landing windows at Lamington Heights.', 'email', 1, 'Agent asks WindowShine to re-clean the 2nd floor landing windows.'),
-  (2064, 'ticket', 203, '2026-11-06T13:20:00Z', NULL, 'ops@windowshine.co.uk', 'contractor', 'comment', NULL, NULL, 'Apologies. We can re-clean on our next visit, Thu 12 Nov, unless you need it sooner?', 'email', 1, 'WindowShine offers a re-clean on Thu 12 Nov and asks if sooner is needed.');
+  (2064, 'ticket', 203, '2026-11-06T13:20:00Z', NULL, 'ops@windowshine.co.uk', NULL, 'comment', NULL, NULL, 'Apologies. We can re-clean on our next visit, Thu 12 Nov, unless you need it sooner?', 'email', 1, 'WindowShine offers a re-clean on Thu 12 Nov and asks if sooner is needed.');
 
 -- Resident email follow-up with a photo (Nov 2026) ----------------------------
 --   204 Hugo raises a damp patch in the UI; the agent replies by email asking for
@@ -843,3 +843,10 @@ On Wed, 4 Nov 2026 at 10:15, Priya Shah <priya@example.com> wrote:
 INSERT OR IGNORE INTO attachments (id, event_id, kind, filename, content_type, size, r2_key) VALUES
   (2083, 2083, 'original', 'original.eml', 'message/rfc822', 116513, 'inbound/204/demo-2083'),
   (2084, 2083, 'file',     'IMG_4127.jpg', 'image/jpeg',     84347,  'attachments/204/demo-2083/0-IMG_4127.jpg');
+
+-- Triage marker (D40) at each ticket's first staff event, so demo tickets aren't all Acknowledged-breached.
+INSERT OR IGNORE INTO events (id, subject_type, subject_id, at, actor_id, actor_role, type, to_value, body, source)
+  SELECT 5000 + t.id, 'ticket', t.id, MIN(e.at), 13, 'agent', 'marker', 'triaged',
+         'Category: ' || COALESCE(t.category, 'none') || '. Contractor: ' || CASE t.needs_contractor WHEN 1 THEN 'yes' ELSE 'no' END || '.', 'ui'
+    FROM tickets t JOIN events e ON e.subject_type = 'ticket' AND e.subject_id = t.id AND e.actor_role IN ('agent','site_staff')
+   GROUP BY t.id;

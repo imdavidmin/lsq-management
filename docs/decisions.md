@@ -361,6 +361,8 @@ from R2: it's recorded as the comment's `original` attachment.
 
 ### D29 — Extra addresses per person; unknown senders get a default role
 
+> The default role is superseded by D43: unknown senders get no role, resolved at read time.
+
 `account_emails` lists extra addresses a person sends from. Inbound attribution
 matches `accounts.email`, then `account_emails`, then sender rules. Login codes
 and notifications only ever use `accounts.email` (D17).
@@ -636,3 +638,81 @@ existing error logging needs no changes.
 **Data:** `sendDefaultPii` stays off. Error messages can still carry an
 email address or ticket id, so Sentry is listed as a processor (gdpr.md).
 SDK pinned to 10.67: 11.x needs wrangler 4.
+
+### D39 — Ticket status says who has the ball
+
+Statuses are `open` (with the agent: untriaged or handed back),
+`awaiting_resident`, `pending_3rd_party`, `awaiting_board`, `resolved`,
+`closed`. Working days a ticket spends in `awaiting_resident` or
+`awaiting_board` don't count toward any running SLA instance (paused); pause
+is counted in whole working days, and a working day is paused if the ticket was
+paused at the start of it, so a same-day pause removes nothing. While
+a ticket is `awaiting_resident`, any event by a non-staff actor (including an
+unknown sender) flips it back to `open` with a `system` status event. A ticket
+left `awaiting_resident` gets a reminder email to the creator after 7 calendar
+days and is closed by the daily cron after 14, with a closing email. Nobody
+reopens a resolved or closed ticket; a resident starts a new one. From
+`awaiting_board` the board or agent moves the ticket on by hand.
+
+**Why:** the trial scenarios (plan-scoring-sla.md) showed clocks blaming the
+agent while the resident or board held the ticket, and no clock at all once
+an agent had replied. Making the holder explicit lets clocks run exactly when
+the agent owes the next move. Auto-close stops `awaiting_resident` becoming a
+parking spot.
+
+### D40 — Acknowledged means triaged
+
+The "Acknowledged" SLA stops on a `triaged` marker, not on any staff event.
+Triage is one staff action (agent or site staff) that records the category
+(confirming the creator's pick is allowed), the contractor decision (yes or
+no, both recorded), and a next step: a status other than `open`, or a
+scheduled date (D41). A staff comment, including the concierge passing a
+ticket to the agent, no longer acknowledges: agent and concierge are one
+party. "Enquiry to contractor" now starts when `needs_contractor` is set
+rather than at creation; triage within 2 working days bounds the gap.
+
+**Why:** a bare "acknowledged" reply stopped the only clock on most tickets,
+and the contractor flag was never-set-is-safest: setting it late breached
+retroactively. Read stricter/looser than the rubric's wording; agreed with
+the board as the meaning of "acknowledged".
+
+### D41 — Scheduled dates and the `next_step` stop
+
+Staff can record "next action on <date>" with a note (`schedule` event,
+`to_value` = the date). A new SLA start kind `scheduled` starts its instance
+on that date, not when it was written; setting a new date before it arrives
+replaces the earlier one. A new stop kind `next_step` matches any status
+change or a new `schedule` event; a plain comment doesn't match. The
+follow-up SLAs (3rd-party follow-up, update after attendance, back with
+agent, follow-up on the date) stop on `next_step`. A far-off date isn't
+guarded against: the board sees it on the timeline (D8).
+
+**Why:** a ticket waiting on a known later event (parts on order, a booked
+visit) shouldn't need "still waiting" comments, but must be picked up when
+the date comes. Requiring a move of the ball, not a comment, is what stops a
+one-word reply ending an obligation.
+
+### D42 — Duplicates point at the earliest ticket
+
+"Close as duplicate of #N" sets `tickets.duplicate_of` (replacing
+`is_duplicate`) and closes the ticket. #N must be older than the ticket being
+closed. Duplicates are left out of every SLA and every metric denominator.
+
+**Why:** several residents reporting one problem shouldn't multiply the
+agent's breaches or passes. Pointing only backwards stops a breached early
+ticket being folded into a later one.
+
+### D43 — Email sender roles are resolved at read time
+
+An unknown sender gets no role at ingest (supersedes D29's default role). It
+sits in the unknown-senders queue until linked to a person or an
+organisation. When scoring, an email event with no `actor_id` takes its role
+from the *current* account/sender rules for its `actor_email`; the stored
+`actor_role` stays as ingested (the spine is never updated, D7). Classifying
+a sender re-scores past events for free (D13). An unknown sender still counts
+as non-staff for D39's hand-back. The `enquiry_sent` marker is still decided
+at ingest, so contractor domains must be classified before the agent mails
+them.
+
+**Why:** the domain guess counted a resident writing from work as a
+contractor, which started contractor SLAs against the agent.

@@ -350,7 +350,6 @@ export interface paths {
                         status?: components["schemas"]["TicketStatus"];
                         category?: string;
                         needs_contractor?: boolean;
-                        is_duplicate?: boolean;
                     };
                 };
             };
@@ -2652,6 +2651,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/webhooks/mailersend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * MailerSend delivery events
+         * @description Verified by the `Signature` header (hex HMAC-SHA256 of the raw body with the webhook's signing secret). Hard bounces, spam complaints and suppressed sends raise an error alert (D38); other events are acknowledged and ignored. The `webhook.test` ping is acknowledged unchecked.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    Signature?: string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @example activity.hard_bounced */
+                        type: string;
+                        data?: Record<string, never>;
+                    };
+                };
+            };
+            responses: {
+                /** @description Event accepted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2796,7 +2844,7 @@ export interface components {
             org_id: number;
         };
         /** @enum {string} */
-        TicketStatus: "open" | "pending_3rd_party" | "resolved" | "closed";
+        TicketStatus: "open" | "awaiting_resident" | "pending_3rd_party" | "awaiting_board" | "resolved" | "closed";
         Ticket: {
             /** @description Also the local part of the ticket's reply_to address */
             id?: number;
@@ -2813,7 +2861,8 @@ export interface components {
             /** @enum {string} */
             classified_by?: "resident" | "agent" | "board" | "admin" | "ai";
             needs_contractor?: boolean;
-            is_duplicate?: boolean;
+            /** @description The older ticket this one duplicates (D42) */
+            duplicate_of?: number | null;
             status?: components["schemas"]["TicketStatus"];
             /** Format: date-time */
             created_at?: string;
@@ -2821,7 +2870,7 @@ export interface components {
             resolved_at?: string | null;
             /** Format: date-time */
             closed_at?: string | null;
-            /** @description Soonest running SLA (D21, D36), on list and detail reads. Null when none is running, the ticket is resolved/closed, or the caller lacks `sla:read`. */
+            /** @description Soonest running SLA (D21, D36), on list and detail reads. Null when none is running, the ticket is resolved/closed or awaiting the resident/board (D39), or the caller lacks `sla:read`. */
             sla_due?: {
                 sla_id: number;
                 name: string;
@@ -2850,7 +2899,7 @@ export interface components {
             actor_email?: string | null;
             actor_role?: string | null;
             /** @enum {string} */
-            type?: "comment" | "classify" | "status" | "attest" | "chase" | "marker" | "config" | "snapshot";
+            type?: "comment" | "classify" | "status" | "flag" | "schedule" | "duplicate" | "attest" | "chase" | "marker" | "config" | "snapshot";
             from_value?: string | null;
             to_value?: string | null;
             body?: string | null;
@@ -2915,10 +2964,10 @@ export interface components {
             description?: string | null;
         };
         /**
-         * @description Start/stop kinds (common/sla.ts); ticket_created can only start.
+         * @description Start/stop kinds (common/sla.ts); ticket_created and scheduled only start, next_step only stops.
          * @enum {string}
          */
-        SlaKind: "ticket_created" | "status" | "event_by" | "marker";
+        SlaKind: "ticket_created" | "scheduled" | "status" | "event_by" | "marker" | "flag" | "next_step";
         Sla: {
             id: number;
             name: string;

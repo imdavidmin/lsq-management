@@ -31,7 +31,6 @@ const serializeTicket = (t: Ticket, domain: string) => ({
   ...t,
   reply_to: `${t.id}@${domain}`,
   needs_contractor: !!t.needs_contractor,
-  is_duplicate: !!t.is_duplicate,
 });
 const serializeEvent = (e: TicketEvent) => ({ ...e, ai_processed: !!e.ai_processed });
 
@@ -53,7 +52,6 @@ const patchSchema = z
     status: z.enum(STATUSES),
     category: z.string().min(1),
     needs_contractor: z.boolean(),
-    is_duplicate: z.boolean(),
   })
   .partial();
 const commentSchema = z.object({ body: z.string().min(1) });

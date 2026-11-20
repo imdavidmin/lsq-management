@@ -105,11 +105,13 @@ describe("tickets", () => {
     })).json()) as any;
     expect(patched.category).toBe("communal_repair");
     expect(patched.classified_by).toBe("agent");
+    await req(`/api/tickets/${t.id}`, agent.cookie, { method: "PATCH", body: JSON.stringify({ needs_contractor: true }) });
 
     const events = (await (await req(`/api/tickets/${t.id}/events`, agent.cookie)).json()) as any[];
     const classify = events.filter((e) => e.type === "classify");
     const reassign = classify.find((e) => e.to_value === "communal_repair");
     expect(reassign.from_value).toBeNull();
+    expect(events.some((e) => e.type === "flag" && e.to_value === "needs_contractor:1")).toBe(true);
   });
 
   it("residents cannot PATCH (no ticket:update permission)", async () => {
@@ -285,11 +287,23 @@ describe("tickets", () => {
     const mine = ((await (await req("/api/tickets", res.cookie)).json()) as any).data.find((x: any) => x.id === t.id);
     expect(mine.sla_due).toBeNull();
 
-    expect((await post(`/api/tickets/${t.id}/events`, agent.cookie, { body: "On it" })).status).toBe(201);
+    await env.DB.prepare(
+      "INSERT INTO events (subject_type, subject_id, at, actor_role, type, to_value, source) VALUES ('ticket', ?, '2026-01-05T10:00:00.000Z', 'agent', 'marker', 'triaged', 'ui')"
+    ).bind(t.id).run();
     const acked = (await (await req(`/api/tickets/${t.id}`, agent.cookie)).json()) as any;
     expect(acked.sla_due).toBeNull();
 
     await req(`/api/tickets/${t.id}`, agent.cookie, { method: "PATCH", body: JSON.stringify({ status: "resolved" }) });
     expect(((await (await req(`/api/tickets/${t.id}`, agent.cookie)).json()) as any).sla_due).toBeNull();
+  });
+
+  it("has no sla_due while the ball is with the resident (D39)", async () => {
+    const agent = await login("sla-due-pause@lsq.test", "agent", "estate", null);
+    const t = (await (await post("/api/tickets", agent.cookie, { title: "Fob", description: "lost" })).json()) as any;
+    await env.DB.prepare("UPDATE tickets SET created_at = '2026-01-05T09:00:00Z' WHERE id = ?").bind(t.id).run();
+    const due = async () => ((await (await req(`/api/tickets/${t.id}`, agent.cookie)).json()) as any).sla_due;
+    expect(await due()).not.toBeNull();
+    await req(`/api/tickets/${t.id}`, agent.cookie, { method: "PATCH", body: JSON.stringify({ status: "awaiting_resident" }) });
+    expect(await due()).toBeNull();
   });
 });

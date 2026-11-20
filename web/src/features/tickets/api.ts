@@ -45,7 +45,7 @@ export function useCreateTicket() {
 export function usePatchTicket(id: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Partial<Pick<Ticket, "status" | "category" | "needs_contractor" | "is_duplicate">>) =>
+    mutationFn: (body: Partial<Pick<Ticket, "status" | "category" | "needs_contractor">>) =>
       request<Ticket>(`/tickets/${id}`, { method: "PATCH", body }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["ticket", id] });
