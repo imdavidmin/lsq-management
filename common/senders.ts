@@ -1,5 +1,4 @@
-// Default SLA role for an inbound sender we can't identify (D29): personal mail
-// domains are most likely residents, anything else a business (contractor).
+// Personal mail domains (D29), used by the directory routes to flag likely residents.
 // Dependency-free so the ai Worker can import it.
 const PERSONAL_DOMAINS = new Set([
   "gmail.com",
@@ -26,7 +25,3 @@ const PERSONAL_DOMAINS = new Set([
 ]);
 
 export const isPersonalDomain = (domain: string) => PERSONAL_DOMAINS.has(domain.toLowerCase());
-
-export function defaultRole(email: string): "resident" | "contractor" {
-  return isPersonalDomain(email.slice(email.lastIndexOf("@") + 1)) ? "resident" : "contractor";
-}

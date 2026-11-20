@@ -1,7 +1,6 @@
 import PostalMime, { type Address, type Email } from "postal-mime";
 import type { InboundEmail } from "../../common/queue";
 import { primaryRole } from "../../common/roles";
-import { defaultRole } from "../../common/senders";
 import { ROLE_GROUPS } from "../../common/sla";
 import type { MailEnv } from "../../common/mail";
 import { all, one, run } from "./db";
@@ -57,11 +56,11 @@ const recipients = (list: Address[]): string[] =>
 // Safe R2 key segment for an attachment's filename.
 const safeName = (name: string | null) => (name ?? "attachment").replace(/[^\w.-]+/g, "_").slice(0, 100) || "attachment";
 
-// A contractor by sender rule, email before domain (same precedence as resolveSender).
+// A contractor by organisation-linked sender rule, email before domain (same as resolveSender, D43).
 async function isContractor(env: Env, email: string): Promise<boolean> {
   const rule = await one<{ kind: string | null }>(
     env.DB,
-    `SELECT o.kind FROM senders s LEFT JOIN organizations o ON o.id = s.org_id
+    `SELECT o.kind FROM senders s JOIN organizations o ON o.id = s.org_id
        WHERE s.status != 'ignored' AND ((s.match_type = 'email' AND s.match_value = ?) OR (s.match_type = 'domain' AND s.match_value = ?))
        ORDER BY s.match_type = 'email' DESC LIMIT 1`,
     email,
@@ -71,7 +70,7 @@ async function isContractor(env: Env, email: string): Promise<boolean> {
 }
 
 // UJ-04: account email (primary or extra, D29) → senders email → senders domain
-// → upsert unknown. Without an organization the role defaults by domain (D29).
+// → upsert unknown. Org-less rules and unknown senders get no role (D43).
 export async function resolveSender(env: Env, from: string, now: string): Promise<Attribution> {
   const account = await one<{ id: number }>(
     env.DB,
@@ -90,16 +89,16 @@ export async function resolveSender(env: Env, from: string, now: string): Promis
     ["email", from],
     ["domain", domainOf(from)],
   ] as const) {
-    const s = await one<{ id: number; org_id: number | null; kind: string | null }>(
+    const s = await one<{ id: number; kind: string }>(
       env.DB,
-      `SELECT s.id, s.org_id, o.kind FROM senders s LEFT JOIN organizations o ON o.id = s.org_id
+      `SELECT s.id, o.kind FROM senders s JOIN organizations o ON o.id = s.org_id
          WHERE s.match_type = ? AND s.match_value = ? AND s.status != 'ignored'`,
       type,
       value
     );
     if (s) {
       await run(env.DB, "UPDATE senders SET hit_count = hit_count + 1, last_seen = ? WHERE id = ?", now, s.id);
-      return { actor_id: null, actor_email: from, actor_role: s.kind ? roleForKind(s.kind) : defaultRole(from) };
+      return { actor_id: null, actor_email: from, actor_role: roleForKind(s.kind) };
     }
   }
 
@@ -114,7 +113,7 @@ export async function resolveSender(env: Env, from: string, now: string): Promis
     now,
     now
   );
-  return { actor_id: null, actor_email: from, actor_role: defaultRole(from) };
+  return { actor_id: null, actor_email: from, actor_role: null };
 }
 
 export async function summarise(env: Env, subject: string, body: string): Promise<string | null> {
@@ -189,8 +188,9 @@ export async function processInbound(env: Env, msg: InboundEmail): Promise<void>
   const files = await storeFiles(env, email, `attachments/${msg.ticketId}/${rawId}`);
 
   // Staff emailing a contractor with the ticket in CC is the enquiry (D21, D31).
+  const staff = (ROLE_GROUPS.staff as readonly string[]).includes(actor_role ?? "");
   let enquiry = false;
-  if ((ROLE_GROUPS.staff as readonly string[]).includes(actor_role ?? "")) {
+  if (staff) {
     for (const to of recipients([...(email.to ?? []), ...(email.cc ?? [])])) {
       if (await isContractor(env, to)) {
         enquiry = true;
@@ -214,5 +214,16 @@ export async function processInbound(env: Env, msg: InboundEmail): Promise<void>
           ).bind(msg.ticketId, now, actor_id, actor_email, actor_role),
         ]
       : []),
+    // Anyone but staff replying hands the ball back (D39); last so the attachment inserts keep last_insert_rowid.
+    ...(staff
+      ? []
+      : [
+          env.DB.prepare(
+            `INSERT INTO events (subject_type, subject_id, at, actor_role, type, from_value, to_value, source)
+             SELECT 'ticket', id, ?, 'system', 'status', 'awaiting_resident', 'open', 'system'
+               FROM tickets WHERE id = ? AND status = 'awaiting_resident'`
+          ).bind(now, msg.ticketId),
+          env.DB.prepare("UPDATE tickets SET status = 'open' WHERE id = ? AND status = 'awaiting_resident'").bind(msg.ticketId),
+        ]),
   ]);
 }

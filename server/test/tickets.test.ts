@@ -219,9 +219,12 @@ describe("tickets", () => {
     expect(await res.json()).toMatchObject({ type: "marker", to_value: "attended", body: "Closer replaced", actor_role: "agent" });
 
     expect((await post(`/api/tickets/${t.id}/markers`, agent.cookie, { marker: "enquiry_sent", notes: "x" })).status).toBe(400);
+    expect((await post(`/api/tickets/${t.id}/markers`, agent.cookie, { marker: "triaged", notes: "x" })).status).toBe(400);
     expect((await post(`/api/tickets/${t.id}/markers`, agent.cookie, { marker: "attended", notes: " " })).status).toBe(400);
     const res2 = await login("res-m@lsq.test", "resident", "estate", null);
     expect((await post(`/api/tickets/${t.id}/markers`, res2.cookie, { marker: "attended", notes: "x" })).status).toBe(403);
+    await req(`/api/tickets/${t.id}`, agent.cookie, { method: "PATCH", body: JSON.stringify({ status: "closed" }) });
+    expect((await post(`/api/tickets/${t.id}/markers`, agent.cookie, { marker: "attended", notes: "x" })).status).toBe(400);
   });
 
   it("serves an email comment's attachments in scope, with sandboxing headers (D28/D29)", async () => {
@@ -305,5 +308,113 @@ describe("tickets", () => {
     expect(await due()).not.toBeNull();
     await req(`/api/tickets/${t.id}`, agent.cookie, { method: "PATCH", body: JSON.stringify({ status: "awaiting_resident" }) });
     expect(await due()).toBeNull();
+  });
+
+  it("triage records flag, triaged marker and next step; Acknowledged met, contractor SLAs run (D40)", async () => {
+    const agent = await login("tri-agent@lsq.test", "agent", "estate", null);
+    const t = (await (await post("/api/tickets", agent.cookie, { title: "Leak", description: "wet" })).json()) as any;
+    const res = await post(`/api/tickets/${t.id}/triage`, agent.cookie, { category: "Plumbing", needs_contractor: true, status: "pending_3rd_party" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ category: "Plumbing", needs_contractor: true, status: "pending_3rd_party" });
+    const events = (await (await req(`/api/tickets/${t.id}/events`, agent.cookie)).json()) as any[];
+    expect(events.some((e) => e.type === "flag" && e.to_value === "needs_contractor:1")).toBe(true);
+    const marker = events.find((e) => e.type === "marker" && e.to_value === "triaged");
+    expect(marker.body).toContain("Contractor: yes");
+    expect(events.filter((e) => e.type === "status").at(-1)).toMatchObject({ to_value: "pending_3rd_party" });
+    expect(events.indexOf(marker)).toBeLessThan(events.map((e) => e.type).lastIndexOf("status"));
+    const slas = (await (await req(`/api/tickets/${t.id}/slas`, agent.cookie)).json()) as any[];
+    const outcome = (n: string) => slas.find((s) => s.name === n)?.outcome;
+    expect(outcome("Acknowledged")).toBe("met");
+    expect(outcome("Enquiry to contractor")).toBe("running");
+    expect(outcome("3rd-party follow-up")).toBe("running");
+  });
+
+  it("triage with awaiting_resident leaves no sla_due (D39)", async () => {
+    const agent = await login("tri-due@lsq.test", "agent", "estate", null);
+    const t = (await (await post("/api/tickets", agent.cookie, { title: "Fob", description: "lost" })).json()) as any;
+    await post(`/api/tickets/${t.id}/triage`, agent.cookie, { category: "Access", needs_contractor: false, status: "awaiting_resident" });
+    expect(((await (await req(`/api/tickets/${t.id}`, agent.cookie)).json()) as any).sla_due).toBeNull();
+  });
+
+  it("rejects bad triage input and non-staff", async () => {
+    const agent = await login("tri-bad@lsq.test", "agent", "estate", null);
+    const t = (await (await post("/api/tickets", agent.cookie, { title: "x", description: "y" })).json()) as any;
+    const url = `/api/tickets/${t.id}/triage`;
+    const base = { category: "Plumbing", needs_contractor: false };
+    const bad = [
+      { ...base, status: "awaiting_board", date: "2999-01-01", note: "n" }, // both
+      base, // neither
+      { ...base, status: "open" },
+      { ...base, date: "2999-01-01" }, // no note
+      { ...base, status: "awaiting_board", note: "n" }, // note without date
+      { ...base, date: "2999-13-01", note: "n" },
+    ];
+    for (const b of bad) expect((await post(url, agent.cookie, b)).status, JSON.stringify(b)).toBe(400);
+    const res = await login("tri-res@lsq.test", "resident", "estate", null);
+    expect((await post(url, res.cookie, { ...base, status: "awaiting_board" })).status).toBe(403);
+    await req(`/api/tickets/${t.id}`, agent.cookie, { method: "PATCH", body: JSON.stringify({ status: "awaiting_board" }) });
+    expect((await post(url, agent.cookie, { ...base, status: "awaiting_board" })).status).toBe(400); // same status
+    await req(`/api/tickets/${t.id}`, agent.cookie, { method: "PATCH", body: JSON.stringify({ status: "resolved" }) });
+    expect((await post(url, agent.cookie, { ...base, status: "awaiting_board" })).status).toBe(400);
+  });
+
+  it("schedules a next action; past dates and closed tickets are rejected (D41)", async () => {
+    const agent = await login("sched-agent@lsq.test", "agent", "estate", null);
+    const t = (await (await post("/api/tickets", agent.cookie, { title: "Parts", description: "on order" })).json()) as any;
+    const url = `/api/tickets/${t.id}/schedule`;
+    const ok = await post(url, agent.cookie, { date: "2999-01-01", note: "Parts arrive" });
+    expect(ok.status).toBe(201);
+    expect(await ok.json()).toMatchObject({ type: "schedule", to_value: "2999-01-01", body: "Parts arrive", source: "ui" });
+    expect((await post(url, agent.cookie, { date: "2020-01-01", note: "n" })).status).toBe(400);
+    for (const date of ["2999-02-30", "2999-13-01", "2999-00-10", "2999-02-32"])
+      expect((await post(url, agent.cookie, { date, note: "n" })).status, date).toBe(400);
+    await req(`/api/tickets/${t.id}`, agent.cookie, { method: "PATCH", body: JSON.stringify({ status: "closed" }) });
+    expect((await post(url, agent.cookie, { date: "2999-01-01", note: "n" })).status).toBe(400);
+  });
+
+  it("closes a ticket as a duplicate of an older one only (D42)", async () => {
+    const agent = await login("dup-agent@lsq.test", "agent", "estate", null);
+    const mk = async () => (await (await post("/api/tickets", agent.cookie, { title: "Lift", description: "stuck" })).json()) as any;
+    const [a, b] = [await mk(), await mk()];
+    await env.DB.prepare("UPDATE tickets SET created_at = '2026-01-01T09:00:00Z' WHERE id = ?").bind(a.id).run();
+    const patch = (id: number, b: unknown) => req(`/api/tickets/${id}`, agent.cookie, { method: "PATCH", body: JSON.stringify(b) });
+
+    expect((await patch(a.id, { duplicate_of: b.id })).status).toBe(400); // newer
+    expect((await patch(b.id, { duplicate_of: b.id })).status).toBe(400); // self
+    expect((await patch(b.id, { duplicate_of: 999999 })).status).toBe(400); // missing
+    const ok = (await (await patch(b.id, { duplicate_of: a.id })).json()) as any;
+    expect(ok).toMatchObject({ duplicate_of: a.id, status: "closed" });
+    const events = (await (await req(`/api/tickets/${b.id}/events`, agent.cookie)).json()) as any[];
+    const kinds = events.map((e) => e.type);
+    expect(events.find((e) => e.type === "duplicate").to_value).toBe(String(a.id));
+    expect(kinds.indexOf("duplicate")).toBeLessThan(kinds.lastIndexOf("status"));
+    expect(((await (await req(`/api/tickets/${b.id}/slas`, agent.cookie)).json()) as any[])).toEqual([]);
+
+    // A duplicate PATCH that also names another status still closes.
+    const c = await mk();
+    expect(await (await patch(c.id, { duplicate_of: a.id, status: "awaiting_board" })).json()).toMatchObject({ status: "closed" });
+  });
+
+  it("doesn't reopen resolved or closed tickets, but resolved can close", async () => {
+    const agent = await login("reopen-agent@lsq.test", "agent", "estate", null);
+    const t = (await (await post("/api/tickets", agent.cookie, { title: "x", description: "y" })).json()) as any;
+    const patch = (status: string) => req(`/api/tickets/${t.id}`, agent.cookie, { method: "PATCH", body: JSON.stringify({ status }) });
+    expect((await patch("resolved")).status).toBe(200);
+    expect((await patch("open")).status).toBe(400);
+    expect((await patch("closed")).status).toBe(200);
+  });
+
+  it("a resident comment hands the ball back to the agent; an agent comment doesn't (D39)", async () => {
+    const res = await login("hb-res@lsq.test", "resident", "unit", 101);
+    const agent = await login("hb-agent@lsq.test", "agent", "estate", null);
+    const t = (await (await post("/api/tickets", res.cookie, { title: "Fob", description: "lost", unit_id: 101 })).json()) as any;
+    const status = async () => ((await (await req(`/api/tickets/${t.id}`, agent.cookie)).json()) as any).status;
+    await req(`/api/tickets/${t.id}`, agent.cookie, { method: "PATCH", body: JSON.stringify({ status: "awaiting_resident" }) });
+    await post(`/api/tickets/${t.id}/events`, agent.cookie, { body: "Any news?" });
+    expect(await status()).toBe("awaiting_resident");
+    await post(`/api/tickets/${t.id}/events`, res.cookie, { body: "Here is the number" });
+    expect(await status()).toBe("open");
+    const events = (await (await req(`/api/tickets/${t.id}/events`, agent.cookie)).json()) as any[];
+    expect(events.at(-1)).toMatchObject({ type: "status", actor_role: "system", from_value: "awaiting_resident", to_value: "open", source: "system" });
   });
 });

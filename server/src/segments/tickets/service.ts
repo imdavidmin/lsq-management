@@ -3,6 +3,7 @@ import { all, one, run } from "../../db/client";
 import type { Grant } from "../../db/client";
 import type { TicketStatus } from "../../../../common/tickets";
 import { layout, paragraphs, render, sendMail } from "../../../../common/mail";
+import { ROLE_GROUPS } from "../../../../common/sla";
 import { emailRoles } from "../../lib/emailRoles";
 import { nextDue, type SlaDef } from "../../lib/sla";
 
@@ -301,6 +302,7 @@ export interface PatchInput {
   status?: string;
   category?: string;
   needs_contractor?: boolean;
+  duplicate_of?: number;
 }
 
 // Apply field changes and append one audit event per changed field.
@@ -324,6 +326,12 @@ export async function patchTicket(
       from_value: ticket.category,
       to_value: p.category,
     });
+  }
+
+  // Before the status block so the duplicate event precedes the close (D42).
+  if (p.duplicate_of !== undefined && p.duplicate_of !== ticket.duplicate_of) {
+    await run(env.DB, "UPDATE tickets SET duplicate_of = ? WHERE id = ?", p.duplicate_of, ticket.id);
+    await appendEvent(env, ticket.id, now, { ...actor, type: "duplicate", to_value: String(p.duplicate_of) });
   }
 
   if (p.status !== undefined && p.status !== ticket.status) {
@@ -377,8 +385,73 @@ export async function addComment(
   return (await getEvent(env, id))!;
 }
 
-// A UI comment by someone else goes to the ticket's creator by email (D33).
-export async function emailCreator(env: Env, ticket: Ticket, commenterId: number, body: string) {
+// "Next action on <date>" (D41).
+export async function addSchedule(
+  env: Env,
+  ticketId: number,
+  accountId: number,
+  role: string,
+  date: string,
+  note: string
+): Promise<TicketEvent> {
+  const id = await appendEvent(env, ticketId, new Date().toISOString(), {
+    actor_id: accountId,
+    actor_role: role,
+    type: "schedule",
+    to_value: date,
+    body: note,
+    source: "ui",
+  });
+  return (await getEvent(env, id))!;
+}
+
+export interface TriageInput {
+  category: string;
+  needs_contractor: boolean;
+  status?: string;
+  date?: string;
+  note?: string;
+}
+
+// One staff action: category + contractor decision, `triaged` marker, then the next step (D40).
+export async function triageTicket(
+  env: Env,
+  ticket: Ticket,
+  accountId: number,
+  role: string,
+  i: TriageInput
+): Promise<Ticket> {
+  await patchTicket(env, ticket, accountId, role, { category: i.category, needs_contractor: i.needs_contractor });
+  await addComment(
+    env,
+    ticket.id,
+    accountId,
+    role,
+    `Category: ${i.category}. Contractor: ${i.needs_contractor ? "yes" : "no"}.`,
+    "triaged"
+  );
+  if (i.date) await addSchedule(env, ticket.id, accountId, role, i.date, i.note!);
+  else await patchTicket(env, (await getTicket(env, ticket.id))!, accountId, role, { status: i.status });
+  return (await getTicket(env, ticket.id))!;
+}
+
+// A non-staff comment hands the ball back to the agent (D39).
+export async function handBack(env: Env, ticket: Ticket, role: string) {
+  if (ticket.status !== "awaiting_resident" || (ROLE_GROUPS.staff as readonly string[]).includes(role)) return;
+  // Guarded so a concurrent cron close or hand-back can't double-write.
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO events (subject_type, subject_id, at, actor_role, type, from_value, to_value, source)
+       SELECT 'ticket', id, ?, 'system', 'status', 'awaiting_resident', 'open', 'system'
+         FROM tickets WHERE id = ? AND status = 'awaiting_resident'`
+    ).bind(new Date().toISOString(), ticket.id),
+    env.DB.prepare("UPDATE tickets SET status = 'open' WHERE id = ? AND status = 'awaiting_resident'").bind(ticket.id),
+  ]);
+}
+
+// A UI comment by someone else goes to the ticket's creator by email (D33);
+// commenterId null = the system (cron).
+export async function emailCreator(env: Env, ticket: Ticket, commenterId: number | null, body: string) {
   if (ticket.created_by == null || ticket.created_by === commenterId) return;
   const creator = await one<{ email: string }>(
     env.DB,

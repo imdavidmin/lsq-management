@@ -334,7 +334,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update status, category (reassign, UJ-06) or flags */
+        /**
+         * Update status, category (reassign, UJ-06), flags or close as duplicate
+         * @description A resolved or closed ticket can't be reopened (400; resolved to closed is fine). `duplicate_of` must name an older ticket (D42); it closes this ticket as a duplicate.
+         */
         patch: {
             parameters: {
                 query?: never;
@@ -350,6 +353,7 @@ export interface paths {
                         status?: components["schemas"]["TicketStatus"];
                         category?: string;
                         needs_contractor?: boolean;
+                        duplicate_of?: number;
                     };
                 };
             };
@@ -362,6 +366,7 @@ export interface paths {
                         "application/json": components["schemas"]["Ticket"];
                     };
                 };
+                400: components["responses"]["BadRequest"];
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
             };
@@ -486,6 +491,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tickets/{id}/triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Triage a ticket (D40)
+         * @description Permission ticket:update. Records the category and contractor decision, a `triaged` marker, then the next step: exactly one of a status other than `open`, or a scheduled `date` (today or later, UTC) with a `note`. A `note` is only accepted with a `date`; `status` must differ from the current one. 400 on a resolved or closed ticket.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        category: string;
+                        needs_contractor: boolean;
+                        /** @enum {string} */
+                        status?: "awaiting_resident" | "pending_3rd_party" | "awaiting_board" | "resolved" | "closed";
+                        /** Format: date */
+                        date?: string;
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Ticket"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{id}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record "next action on <date>" (D41)
+         * @description Permission ticket:update. The date must be today or later (UTC). 400 on a resolved or closed ticket.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: date */
+                        date: string;
+                        note: string;
+                    };
+                };
+            };
+            responses: {
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Event"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tickets/{id}/markers": {
         parameters: {
             query?: never;
@@ -499,7 +614,7 @@ export interface paths {
         put?: never;
         /**
          * Record a manual SLA marker (D21)
-         * @description Permission ticket:update. Only `attended` (contractor attended site) is entered by hand; `enquiry_sent` is inferred by the system. The notes go in the event body.
+         * @description Permission ticket:update. Only `attended` (contractor attended site) is entered by hand; `enquiry_sent` is inferred by the system and `triaged` comes from POST /tickets/{id}/triage. The notes go in the event body.
          */
         post: {
             parameters: {

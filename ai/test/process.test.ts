@@ -70,7 +70,7 @@ describe("ai Worker — processInbound", () => {
 
     const [ev] = await eventsFor(1234);
     expect(ev.actor_email).toBe("stranger@nowhere.io");
-    expect(ev.actor_role).toBe("contractor"); // unknown business domain (D29)
+    expect(ev.actor_role).toBeNull(); // unknown sender (D43)
     expect(ev.ai_processed).toBe(0); // opt-out
     expect(ev.ai_summary).toBeNull();
 
@@ -167,7 +167,7 @@ describe("ai Worker — processInbound", () => {
     expect(new TextDecoder().decode(h.store.get("attachments/1234/mp1/0-leak_photo.png") as Uint8Array)).toBe("PNGDATA");
   });
 
-  it("defaults unknown personal-domain senders to resident, and resolves extra account addresses (D29)", async () => {
+  it("leaves unknown senders without a role, and resolves extra account addresses (D29)", async () => {
     const h = makeEnv({ p1: rawMime("from gmail"), p2: rawMime("from alt") });
     await processInbound(h.env, { ticketId: 1234, from: "someone@gmail.com", subject: "s", rawKey: "p1" });
 
@@ -180,7 +180,77 @@ describe("ai Worker — processInbound", () => {
     await processInbound(h.env, { ticketId: 1234, from: "alt@hotmail.com", subject: "s", rawKey: "p2" });
 
     const [gmail, alt] = await eventsFor(1234);
-    expect([gmail.actor_email, gmail.actor_role]).toEqual(["someone@gmail.com", "resident"]);
+    expect([gmail.actor_email, gmail.actor_role]).toEqual(["someone@gmail.com", null]);
     expect([alt.actor_id, alt.actor_role]).toEqual([acct!.id, "resident"]); // no grants → resident
+  });
+
+  it("an org-less unknown-sender row does not shadow a classified domain rule (D43)", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO tickets (id, title, status, classified_by, created_at) VALUES (1236, 'Gate', 'open', 'agent', '2026-11-02')"),
+      env.DB.prepare("INSERT INTO accounts (id, email, name) VALUES (93, 'sam2@agentco.co.uk', 'Sam')"),
+      env.DB.prepare("INSERT INTO grants (account_id, role_key, scope_type, scope_id) VALUES (93, 'agent', 'estate', NULL)"),
+    ]);
+    const raw = "From: x\r\nTo: Bob <bob@acme.test>\r\nCc: 1236@ticket.lansburysquare.co.uk\r\n\r\nPlease attend.";
+    const send = (key: string, from: string) =>
+      processInbound(makeEnv({ [key]: raw }).env, { ticketId: 1236, from, subject: "s", rawKey: key });
+
+    await send("u1", "bob@acme.test"); // creates the org-less 'new' row for bob
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO organizations (id, name, kind) VALUES (95, 'Acme', 'contractor')"),
+      env.DB.prepare("INSERT INTO senders (match_type, match_value, org_id, status, first_seen, last_seen) VALUES ('domain', 'acme.test', 95, 'linked', 'x', 'x')"),
+    ]);
+    await send("u2", "sam2@agentco.co.uk");
+
+    expect((await eventsFor(1236)).filter((e) => e.type === "marker").map((e) => e.to_value)).toEqual(["enquiry_sent"]);
+  });
+
+  it("a non-staff reply hands an awaiting_resident ticket back to open; staff mail does not (D39)", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO tickets (id, title, status, classified_by, created_at) VALUES (1237, 'Fob', 'awaiting_resident', 'agent', '2026-11-02')"),
+      env.DB.prepare("INSERT INTO tickets (id, title, status, classified_by, created_at) VALUES (1238, 'Bin', 'awaiting_resident', 'agent', '2026-11-02')"),
+      env.DB.prepare("INSERT INTO accounts (id, email, name) VALUES (94, 'sam3@agentco.co.uk', 'Sam')"),
+      env.DB.prepare("INSERT INTO grants (account_id, role_key, scope_type, scope_id) VALUES (94, 'agent', 'estate', NULL)"),
+    ]);
+    const h = makeEnv({ h1: rawMime("it is me"), h2: rawMime("agent note") });
+    await processInbound(h.env, { ticketId: 1237, from: "who@nowhere.io", subject: "s", rawKey: "h1" });
+    await processInbound(h.env, { ticketId: 1238, from: "sam3@agentco.co.uk", subject: "s", rawKey: "h2" });
+
+    const status = (id: number) =>
+      env.DB.prepare("SELECT status FROM tickets WHERE id = ?").bind(id).first<{ status: string }>().then((r) => r!.status);
+    expect(await status(1237)).toBe("open");
+    expect(await status(1238)).toBe("awaiting_resident");
+    expect((await eventsFor(1237)).filter((e) => e.type === "status").map((e) => [e.actor_role, e.from_value, e.to_value, e.source])).toEqual([
+      ["system", "awaiting_resident", "open", "system"],
+    ]);
+    expect((await eventsFor(1238)).filter((e) => e.type === "status")).toEqual([]);
+  });
+
+  it("hand-back keeps attachments linked to the comment event (D39)", async () => {
+    await env.DB.prepare("INSERT INTO tickets (id, title, status, classified_by, created_at) VALUES (1239, 'Gate', 'awaiting_resident', 'agent', '2026-11-02')").run();
+    const raw = [
+      "From: Res <res3@lsq.test>",
+      "To: 1239@ticket.lansburysquare.co.uk",
+      "MIME-Version: 1.0",
+      'Content-Type: multipart/mixed; boundary="b1"',
+      "",
+      "--b1",
+      "Content-Type: text/plain",
+      "",
+      "photo",
+      "--b1",
+      'Content-Type: image/png; name="a.png"',
+      'Content-Disposition: attachment; filename="a.png"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      btoa("PNGDATA"),
+      "--b1--",
+      "",
+    ].join("\r\n");
+    await processInbound(makeEnv({ k: raw }).env, { ticketId: 1239, from: "res3@lsq.test", subject: "s", rawKey: "k" });
+
+    const evs = await eventsFor(1239);
+    const comment = evs.find((e) => e.type === "comment");
+    expect((await attachmentsFor(comment.id)).map((a) => a.kind)).toEqual(["original", "file"]);
+    expect(evs.some((e) => e.type === "status" && e.to_value === "open")).toBe(true);
   });
 });

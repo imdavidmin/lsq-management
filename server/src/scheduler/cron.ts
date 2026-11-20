@@ -4,6 +4,7 @@ import { emailRoles } from "../lib/emailRoles";
 import { applies, instances, type SlaDef, type SlaEvent, type SlaTicket } from "../lib/sla";
 import { isWorkingDay, workingDaysBetween } from "../lib/workdays";
 import { layout, render, sendMail } from "../../../common/mail";
+import { emailCreator, type Ticket } from "../segments/tickets/service";
 
 // A digest of tickets, each linked to the app (D35).
 const ticketList = (env: Env, heading: string, rows: { id: number; title: string; note: string }[]) =>
@@ -123,6 +124,50 @@ export async function reminderPass(env: Env, now: Date): Promise<{ due: number }
   return { due: due.length };
 }
 
+const REMIND_AFTER_DAYS = 7;
+const CLOSE_AFTER_DAYS = 14;
+const REMINDER_TEXT = `We're still waiting for your reply on this ticket. If we don't hear back it will be closed in ${CLOSE_AFTER_DAYS - REMIND_AFTER_DAYS} days.`;
+const CLOSED_TEXT = `This ticket has been closed after ${CLOSE_AFTER_DAYS} days without a reply. Please start a new ticket if you still need help.`;
+const CLOSE_NOTE = `Closed after ${CLOSE_AFTER_DAYS} days awaiting the resident.`;
+
+const utcDay = (iso: string) => Date.parse(iso.slice(0, 10)) / 86_400_000;
+
+// D39: email the creator after 7 calendar days in awaiting_resident (no event);
+// close the ticket after 14 and email again. Runs every day, not just working days.
+export async function awaitingResidentPass(env: Env, now: Date): Promise<{ reminded: number; closed: number }> {
+  const nowIso = now.toISOString();
+  const rows = await all<Ticket & { since: string }>(
+    env.DB,
+    `SELECT t.*, MAX(e.at) AS since FROM tickets t
+       JOIN events e ON e.subject_type = 'ticket' AND e.subject_id = t.id
+                    AND e.type = 'status' AND e.to_value = 'awaiting_resident'
+      WHERE t.status = 'awaiting_resident' GROUP BY t.id`
+  );
+  let reminded = 0;
+  let closed = 0;
+  for (const t of rows) {
+    const days = utcDay(nowIso) - utcDay(t.since);
+    if (days >= CLOSE_AFTER_DAYS) {
+      // Guarded: skip if the resident replied since the read (D39).
+      const [, update] = await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO events (subject_type, subject_id, at, actor_role, type, from_value, to_value, body, source)
+           SELECT 'ticket', id, ?, 'system', 'status', 'awaiting_resident', 'closed', ?, 'system'
+             FROM tickets WHERE id = ? AND status = 'awaiting_resident'`
+        ).bind(nowIso, CLOSE_NOTE, t.id),
+        env.DB.prepare("UPDATE tickets SET status = 'closed', closed_at = ? WHERE id = ? AND status = 'awaiting_resident'").bind(nowIso, t.id),
+      ]);
+      if (!update!.meta.changes) continue;
+      await emailCreator(env, t, null, CLOSED_TEXT);
+      closed++;
+    } else if (days === REMIND_AFTER_DAYS) {
+      await emailCreator(env, t, null, REMINDER_TEXT);
+      reminded++;
+    }
+  }
+  return { reminded, closed };
+}
+
 // D27: purge login codes that are expired or used, and sessions past either
 // expiry. Neither is audit data; both are dead once expired.
 export async function cleanupPass(env: Env, now: Date): Promise<{ otps: number; sessions: number }> {
@@ -144,11 +189,12 @@ export function isReportDay(env: Env, now: Date): boolean {
   return now.getUTCDate() === reportDay(env, now);
 }
 
-// Daily entry (UJ-11/12, D24, D27): chase, SLA reminders and auth cleanup always;
+// Daily entry (UJ-11/12, D24, D27, D39): chase, SLA reminders, awaiting-resident and auth cleanup always;
 // monthly report on the configured day.
 export async function runScheduled(env: Env, now: Date): Promise<void> {
   await reminderPass(env, now);
   await chasePass(env, now);
+  await awaitingResidentPass(env, now);
   await cleanupPass(env, now);
   if (isReportDay(env, now)) {
     // TODO(phase 4): const report = await monthlyReport(env, prevMonth(now));

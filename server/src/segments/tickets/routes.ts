@@ -9,14 +9,17 @@ import type { ScopeRef } from "../../lib/scope";
 import { STATUSES } from "../../../../common/tickets";
 import {
   addComment,
+  addSchedule,
   createTicket,
   emailCreator,
   getTicket,
+  handBack,
   listTickets,
   patchTicket,
   primaryRole,
   ticketAttachment,
   ticketEvents,
+  triageTicket,
   withSlaDue,
   type Ticket,
   type TicketEvent,
@@ -47,13 +50,31 @@ const createSchema = z.object({
   building_id: z.number().int().nullish(),
   unit_id: z.number().int().nullish(),
 });
+// A real calendar date, today or later (UTC).
+const isoDate = z
+  .string()
+  .date()
+  .refine((d) => d >= new Date().toISOString().slice(0, 10), "date is in the past");
 const patchSchema = z
   .object({
     status: z.enum(STATUSES),
     category: z.string().min(1),
     needs_contractor: z.boolean(),
+    duplicate_of: z.number().int().positive(),
   })
   .partial();
+const triageSchema = z
+  .object({
+    category: z.string().min(1),
+    needs_contractor: z.boolean(),
+    status: z.enum(STATUSES).exclude(["open"]).optional(),
+    date: isoDate.optional(),
+    note: z.string().trim().min(1).optional(),
+  })
+  .refine((v) => (v.status === undefined) !== (v.date === undefined), "give exactly one of status or date")
+  .refine((v) => (v.date === undefined) === (v.note === undefined), "note goes with date, and date needs a note");
+const scheduleSchema = z.object({ date: isoDate, note: z.string().trim().min(1) });
+const done = (s: string) => s === "resolved" || s === "closed";
 const commentSchema = z.object({ body: z.string().min(1) });
 // Only `attended` is entered by hand; the other markers are system-inferred (D21).
 const markerSchema = z.object({ marker: z.enum(["attended"]), notes: z.string().trim().min(1) });
@@ -141,8 +162,15 @@ tickets.patch("/:id", requirePermission("ticket:update", ticketScope), async (c)
   const p = await body(c, patchSchema);
   const t = await getTicket(c.env, idParam(c));
   if (!t) notFound("no such ticket");
+  if (done(t!.status) && p.status && !done(p.status)) badRequest("a resolved or closed ticket can't be reopened");
+  if (p.duplicate_of !== undefined) {
+    // D42: only an older ticket can be the original.
+    const orig = await getTicket(c.env, p.duplicate_of);
+    if (!orig || orig.id === t!.id || orig.created_at >= t!.created_at) badRequest("duplicate_of must be an older ticket");
+  }
+  const input = p.duplicate_of !== undefined ? { ...p, status: "closed" as const } : p;
   const account = c.get("account");
-  const updated = await patchTicket(c.env, t!, account.id, primaryRole(c.get("grants")), p);
+  const updated = await patchTicket(c.env, t!, account.id, primaryRole(c.get("grants")), input);
   return c.json(serializeTicket(updated, c.env.TICKET_EMAIL_DOMAIN));
 });
 
@@ -152,6 +180,7 @@ tickets.post("/:id/events", requirePermission("ticket:comment", ticketScope), as
   if (!t) notFound("no such ticket");
   const account = c.get("account");
   const ev = await addComment(c.env, t!.id, account.id, primaryRole(c.get("grants")), text);
+  await handBack(c.env, t!, primaryRole(c.get("grants")));
   await emailCreator(c.env, t!, account.id, text);
   return c.json(serializeEvent(ev), 201);
 });
@@ -160,7 +189,29 @@ tickets.post("/:id/markers", requirePermission("ticket:update", ticketScope), as
   const { marker, notes } = await body(c, markerSchema);
   const t = await getTicket(c.env, idParam(c));
   if (!t) notFound("no such ticket");
+  if (done(t!.status)) badRequest("ticket is already resolved or closed");
   const account = c.get("account");
   const ev = await addComment(c.env, t!.id, account.id, primaryRole(c.get("grants")), notes, marker);
+  return c.json(serializeEvent(ev), 201);
+});
+
+tickets.post("/:id/triage", requirePermission("ticket:update", ticketScope), async (c) => {
+  const i = await body(c, triageSchema);
+  const t = await getTicket(c.env, idParam(c));
+  if (!t) notFound("no such ticket");
+  if (done(t!.status)) badRequest("ticket is already resolved or closed");
+  if (i.status === t!.status) badRequest("choose a different status or a date");
+  const account = c.get("account");
+  const updated = await triageTicket(c.env, t!, account.id, primaryRole(c.get("grants")), i);
+  return c.json(serializeTicket(updated, c.env.TICKET_EMAIL_DOMAIN));
+});
+
+tickets.post("/:id/schedule", requirePermission("ticket:update", ticketScope), async (c) => {
+  const { date, note } = await body(c, scheduleSchema);
+  const t = await getTicket(c.env, idParam(c));
+  if (!t) notFound("no such ticket");
+  if (done(t!.status)) badRequest("ticket is already resolved or closed");
+  const account = c.get("account");
+  const ev = await addSchedule(c.env, t!.id, account.id, primaryRole(c.get("grants")), date, note);
   return c.json(serializeEvent(ev), 201);
 });

@@ -213,7 +213,11 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [tickets]
-      summary: Update status, category (reassign, UJ-06) or flags
+      summary: Update status, category (reassign, UJ-06), flags or close as duplicate
+      description: >
+        A resolved or closed ticket can't be reopened (400; resolved to closed is
+        fine). `duplicate_of` must name an older ticket (D42); it closes this
+        ticket as a duplicate.
       requestBody:
         required: true
         content:
@@ -224,11 +228,13 @@ paths:
                 status: { $ref: "#/components/schemas/TicketStatus" }
                 category: { type: string }
                 needs_contractor: { type: boolean }
+                duplicate_of: { type: integer, minimum: 1 }
       responses:
         "200":
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Ticket" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
   /tickets/{id}/attachments/{attachmentId}:
@@ -283,6 +289,68 @@ paths:
               schema: { $ref: "#/components/schemas/Event" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /tickets/{id}/triage:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    post:
+      tags: [tickets]
+      summary: Triage a ticket (D40)
+      description: >
+        Permission ticket:update. Records the category and contractor decision,
+        a `triaged` marker, then the next step: exactly one of a status other
+        than `open`, or a scheduled `date` (today or later, UTC) with a `note`. A `note` is only
+        accepted with a `date`; `status` must differ from the current one.
+        400 on a resolved or closed ticket.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category, needs_contractor]
+              properties:
+                category: { type: string, minLength: 1 }
+                needs_contractor: { type: boolean }
+                status: { type: string, enum: [awaiting_resident, pending_3rd_party, awaiting_board, resolved, closed] }
+                date: { type: string, format: date }
+                note: { type: string, minLength: 1 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tickets/{id}/schedule:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: integer } }
+    post:
+      tags: [tickets]
+      summary: Record "next action on <date>" (D41)
+      description: >
+        Permission ticket:update. The date must be today or later (UTC). 400 on a
+        resolved or closed ticket.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, note]
+              properties:
+                date: { type: string, format: date }
+                note: { type: string, minLength: 1 }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /tickets/{id}/markers:
     parameters:
       - { in: path, name: id, required: true, schema: { type: integer } }
@@ -291,7 +359,8 @@ paths:
       summary: Record a manual SLA marker (D21)
       description: >
         Permission ticket:update. Only `attended` (contractor attended site) is
-        entered by hand; `enquiry_sent` is inferred by the system. The notes go
+        entered by hand; `enquiry_sent` is inferred by the system and `triaged`
+        comes from POST /tickets/{id}/triage. The notes go
         in the event body.
       requestBody:
         required: true

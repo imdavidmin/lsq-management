@@ -60,7 +60,7 @@ Break one of these and you've broken the design, not just a test:
 4. **Scoring is on-demand, never cached/nightly (D13).** Auto metrics are
    recomputed per dashboard/report request. Only manual/survey inputs and board
    disputes get stored (`metric_values`, latest-row-wins). The one Cron runs
-   the daily chase + SLA-reminder pass, the auth cleanup (D27), and the monthly
+   the daily chase + SLA-reminder pass, the awaiting-resident reminder/auto-close (D39), the auth cleanup (D27), and the monthly
    report on `REPORT_DAY_OF_MONTH` (D14/D15/D24). Nothing else.
 5. **Don't build anti-gaming or speculative flexibility (D8).** No role
    inheritance, ABAC, per-field ACLs, DMARC flagging, Durable-Object alarms —

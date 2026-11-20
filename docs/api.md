@@ -46,11 +46,15 @@ target (D18). `public` = no session (login only).
 | GET    | `/tickets`             | `ticket:read`    | List tickets visible to caller (filters, paging) | UJ-09        |
 | POST   | `/tickets`             | `ticket:create`  | Create ticket (creator picks category, optional) | UJ-01, UJ-05 |
 | GET    | `/tickets/{id}`        | `ticket:read`    | Ticket detail + event timeline                   | UJ-02        |
-| PATCH  | `/tickets/{id}`        | `ticket:update`  | Status / category (reassign) / flags             | UJ-06        |
+| PATCH  | `/tickets/{id}`        | `ticket:update`  | Status / category (reassign) / flags / `duplicate_of` (older ticket, closes it); no reopen | UJ-06, D42 |
 | GET    | `/tickets/{id}/events` | `ticket:read`    | Timeline (comments, markers, chase)              | UJ-02        |
 | POST   | `/tickets/{id}/events` | `ticket:comment` | Add a UI comment/update                          | UJ-02        |
 | GET    | `/tickets/{id}/attachments/{attachmentId}` | `ticket:read` | Download an email attachment / original `.eml` | D28 |
 | POST   | `/tickets/{id}/markers` | `ticket:update` | Record "contractor attended" + notes             | D21          |
+| POST   | `/tickets/{id}/triage` | `ticket:update`  | Category + contractor decision + `triaged` marker + next step (status or date) | D40 |
+| POST   | `/tickets/{id}/schedule` | `ticket:update` | "Next action on <date>" + note                  | D41          |
+
+A non-staff comment on an `awaiting_resident` ticket flips it back to `open` (D39).
 
 List and detail reads carry `sla_due`: the ticket's soonest running SLA and its
 working days left (negative = overdue), or null. Only callers with `sla:read`

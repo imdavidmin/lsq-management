@@ -206,6 +206,10 @@ A single Cron Trigger does the only things that need a timer:
   N working days) or near/overdue deadline, append `events(type='chase')`
   and notify the responsible party. It also emails the agents a list of SLA
   instances due today. These reminders are not written as events (D24).
+- **Awaiting-resident pass (daily, every calendar day, D39):** tickets in
+  `awaiting_resident` get a reminder email to the creator exactly 7 UTC calendar
+  days after the status was set (no event written), and are closed with a
+  `system` status event and a closing email at 14.
 - **Monthly report (configured day, UJ-11):** the daily pass checks whether
   today matches `REPORT_DAY_OF_MONTH` (clamped to the last day for short months)
   — not fixed to the 1st, because it tracks the board/agent meeting schedule,

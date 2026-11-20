@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
-import { chasePass, cleanupPass, isReportDay, reminderPass, runScheduled } from "../src/scheduler/cron";
+import { describe, it, expect, vi } from "vitest";
+import { awaitingResidentPass, chasePass, cleanupPass, isReportDay, reminderPass, runScheduled } from "../src/scheduler/cron";
 import { seedAccount } from "./helpers";
 import { workingDaysBetween } from "../src/lib/workdays";
 
@@ -124,3 +124,70 @@ describe("cleanupPass (D27)", () => {
   });
 });
 
+
+describe("scheduler — awaiting-resident pass (D39)", () => {
+  // Ticket 6000+n created by a seeded resident, set awaiting_resident at `since`.
+  async function seedAwaiting(id: number, since: string, status = "awaiting_resident") {
+    const creator = await seedAccount(`res-${id}@lsq.test`);
+    await env.DB.prepare(
+      "INSERT INTO tickets (id, title, status, classified_by, created_by, created_at) VALUES (?, ?, ?, 'agent', ?, ?)"
+    ).bind(id, `T${id}`, status, creator, since).run();
+    await env.DB.prepare(
+      `INSERT INTO events (subject_type, subject_id, at, type, from_value, to_value, source)
+         VALUES ('ticket', ?, ?, 'status', 'open', 'awaiting_resident', 'ui')`
+    ).bind(id, since).run();
+  }
+  const row = (id: number) => env.DB.prepare("SELECT * FROM tickets WHERE id = ?").bind(id).first<any>();
+  const statusEvents = (id: number) =>
+    env.DB.prepare("SELECT * FROM events WHERE subject_type='ticket' AND subject_id=? AND actor_role='system'")
+      .bind(id).all().then((r) => r.results as any[]);
+
+  it("reminds on day 7 only, closes from day 14, ignores other days and statuses", async () => {
+    const mail: any[] = [];
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_i, init) => {
+      mail.push(JSON.parse(String(init?.body)));
+      return new Response(null, { status: 202 });
+    });
+    const e = { ...env, MAILERSEND_API_KEY: "mlsn.test" } as typeof env;
+    await seedAwaiting(6001, "2026-03-01T23:00:00.000Z"); // day 7 on 03-08
+    await seedAwaiting(6002, "2026-02-22T09:00:00.000Z"); // day 14
+    await seedAwaiting(6003, "2026-03-02T09:00:00.000Z"); // day 6
+    await seedAwaiting(6004, "2026-02-22T09:00:00.000Z", "open"); // wrong status
+
+    const now = new Date("2026-03-08T02:00:00.000Z");
+    expect(await awaitingResidentPass(e, now)).toEqual({ reminded: 1, closed: 1 });
+
+    expect(mail.map((m) => m.to[0].email).sort()).toEqual(["res-6001@lsq.test", "res-6002@lsq.test"]);
+    expect(mail.find((m) => m.to[0].email === "res-6001@lsq.test").text).toContain("closed in 7 days");
+    expect(mail.find((m) => m.to[0].email === "res-6002@lsq.test").text).toContain("has been closed");
+
+    expect((await row(6001)).status).toBe("awaiting_resident");
+    expect(await statusEvents(6001)).toHaveLength(0); // reminder writes no event
+    const closed = await row(6002);
+    expect(closed.status).toBe("closed");
+    expect(closed.closed_at).toBe(now.toISOString());
+    expect(await statusEvents(6002)).toMatchObject([
+      { type: "status", from_value: "awaiting_resident", to_value: "closed", source: "system" },
+    ]);
+    expect((await row(6003)).status).toBe("awaiting_resident");
+    expect((await row(6004)).status).toBe("open");
+    spy.mockRestore();
+  });
+
+  it("counts from the latest re-entry into awaiting_resident", async () => {
+    await seedAwaiting(6005, "2026-02-01T09:00:00.000Z"); // first entry, 35 days ago
+    await env.DB.prepare(
+      `INSERT INTO events (subject_type, subject_id, at, type, from_value, to_value, source) VALUES
+         ('ticket', 6005, '2026-02-05T09:00:00.000Z', 'status', 'awaiting_resident', 'open', 'ui'),
+         ('ticket', 6005, '2026-03-01T09:00:00.000Z', 'status', 'open', 'awaiting_resident', 'ui')`
+    ).run();
+    expect(await awaitingResidentPass(env, new Date("2026-03-08T02:00:00.000Z"))).toEqual({ reminded: 1, closed: 0 });
+    expect((await row(6005)).status).toBe("awaiting_resident");
+  });
+
+  it("runScheduled runs the pass", async () => {
+    await seedAwaiting(6006, "2026-02-22T09:00:00.000Z");
+    await runScheduled(env, new Date("2026-03-08T02:00:00.000Z"));
+    expect((await row(6006)).status).toBe("closed");
+  });
+});
