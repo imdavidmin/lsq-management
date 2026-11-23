@@ -429,7 +429,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Ticket event timeline */
+        /**
+         * Ticket event timeline
+         * @description Contractor and unclassified email senders' events are omitted unless the caller holds ticket:read_contractor (D44). Same for GET /tickets and GET /tickets/{id}, and their attachments 404.
+         */
         get: {
             parameters: {
                 query?: never;

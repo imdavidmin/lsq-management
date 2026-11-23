@@ -260,6 +260,10 @@ paths:
     get:
       tags: [tickets]
       summary: Ticket event timeline
+      description: >-
+        Contractor and unclassified email senders' events are omitted unless the
+        caller holds ticket:read_contractor (D44). Same for GET /tickets and
+        GET /tickets/{id}, and their attachments 404.
       responses:
         "200":
           content:

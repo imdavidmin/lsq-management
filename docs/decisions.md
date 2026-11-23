@@ -716,3 +716,16 @@ them.
 
 **Why:** the domain guess counted a resident writing from work as a
 contractor, which started contractor SLAs against the agent.
+
+### D44 — Residents don't see contractor messages
+
+Ticket events from contractor senders, and from email senders not yet
+classified (D43), are left out of ticket timelines and attachment downloads
+unless the caller holds `ticket:read_contractor`. Board and admin (`*`),
+agent and site staff (`ticket:*`) hold it; residents don't. The events are
+still stored and still drive SLAs (D7, D21). Email is out of scope: a
+contractor who CCs or replies to a resident decides that themselves.
+
+**Why:** contractor replies can carry commercial terms that aren't for
+residents. Unknown senders are hidden until classified, so a contractor
+mailing before its domain is set up doesn't leak.

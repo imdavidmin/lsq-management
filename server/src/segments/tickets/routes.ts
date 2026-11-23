@@ -6,6 +6,7 @@ import { badRequest, notFound } from "../../lib/errors";
 import { requireSession } from "../../middleware/session";
 import { requirePermission, readableGrants } from "../../middleware/rbac";
 import type { ScopeRef } from "../../lib/scope";
+import { emailRoles } from "../../lib/emailRoles";
 import { STATUSES } from "../../../../common/tickets";
 import {
   addComment,
@@ -41,6 +42,17 @@ const serializeEvent = (e: TicketEvent) => ({ ...e, ai_processed: !!e.ai_process
 async function slaDue<T extends Ticket & { events: TicketEvent[] }>(c: any, rows: T[]) {
   if (!(await readableGrants(c, "sla:read")).length) return rows.map((t) => ({ ...t, sla_due: null }));
   return withSlaDue(c.env, rows, new Date());
+}
+
+// Hides contractor (and still-unknown) email senders from callers without
+// ticket:read_contractor (D44). Applied after SLA evaluation, which needs them all.
+async function eventVisible(c: any) {
+  if ((await readableGrants(c, "ticket:read_contractor")).length) return () => true;
+  const resolve = await emailRoles(c.env.DB);
+  return (e: Pick<TicketEvent, "actor_id" | "actor_email" | "actor_role">) => {
+    const role = resolve(e).actor_role;
+    return role !== "contractor" && !(role == null && e.actor_email);
+  };
 }
 
 const createSchema = z.object({
@@ -102,7 +114,11 @@ tickets.get("/", requirePermission("ticket:read"), async (c) => {
   const grants = await readableGrants(c, "ticket:read");
   const account = c.get("account");
   const res = await listTickets(c.env, grants, account.id, parsed.data);
-  const data = (await slaDue(c, res.data)).map((t) => ({ ...serializeTicket(t, c.env.TICKET_EMAIL_DOMAIN), events: t.events.map(serializeEvent) }));
+  const visible = await eventVisible(c);
+  const data = (await slaDue(c, res.data)).map((t) => ({
+    ...serializeTicket(t, c.env.TICKET_EMAIL_DOMAIN),
+    events: t.events.filter(visible).map(serializeEvent),
+  }));
   return c.json({ data, page: res.page, total: res.total });
 });
 
@@ -131,12 +147,13 @@ tickets.get("/:id", requirePermission("ticket:read", ticketScope), async (c) => 
   const t = await getTicket(c.env, idParam(c));
   if (!t) notFound("no such ticket");
   const row = (await slaDue(c, [{ ...t!, events: await ticketEvents(c.env, t!.id) }]))[0]!;
-  return c.json({ ...serializeTicket(row, c.env.TICKET_EMAIL_DOMAIN), events: row.events.map(serializeEvent) });
+  const visible = await eventVisible(c);
+  return c.json({ ...serializeTicket(row, c.env.TICKET_EMAIL_DOMAIN), events: row.events.filter(visible).map(serializeEvent) });
 });
 
 tickets.get("/:id/events", requirePermission("ticket:read", ticketScope), async (c) => {
   const events = await ticketEvents(c.env, idParam(c));
-  return c.json(events.map(serializeEvent));
+  return c.json(events.filter(await eventVisible(c)).map(serializeEvent));
 });
 
 // Files come from strangers' email and are served from our origin: never sniffed,
@@ -144,7 +161,8 @@ tickets.get("/:id/events", requirePermission("ticket:read", ticketScope), async 
 const INLINE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"];
 
 tickets.get("/:id/attachments/:attachmentId", requirePermission("ticket:read", ticketScope), async (c) => {
-  const att = await ticketAttachment(c.env, idParam(c), Number(c.req.param("attachmentId")));
+  const found = await ticketAttachment(c.env, idParam(c), Number(c.req.param("attachmentId")));
+  const att = found && (await eventVisible(c))(found) ? found : null;
   const obj = att && (await c.env.MAIL.get(att.r2_key));
   if (!att || !obj) notFound("no such attachment");
   const inline = INLINE_TYPES.includes(att!.content_type);

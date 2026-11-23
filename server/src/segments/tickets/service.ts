@@ -199,9 +199,9 @@ export async function ticketEvents(
 
 // An attachment on one of this ticket's events (null if it belongs elsewhere).
 export const ticketAttachment = (env: Env, ticketId: number, attachmentId: number) =>
-  one<Attachment & { r2_key: string }>(
+  one<Attachment & { r2_key: string } & Pick<TicketEvent, "actor_id" | "actor_email" | "actor_role">>(
     env.DB,
-    `SELECT a.* FROM attachments a JOIN events e ON e.id = a.event_id
+    `SELECT a.*, e.actor_id, e.actor_email, e.actor_role FROM attachments a JOIN events e ON e.id = a.event_id
       WHERE a.id = ? AND e.subject_type = 'ticket' AND e.subject_id = ?`,
     attachmentId,
     ticketId

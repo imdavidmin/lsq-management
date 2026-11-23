@@ -274,6 +274,39 @@ describe("tickets", () => {
     expect((await req(`/api/tickets/${other.id}/attachments/${png}`, b.cookie)).status).toBe(404); // wrong ticket
   });
 
+  it("hides contractor and unclassified senders' events from residents, not staff (D44)", async () => {
+    const res = await login("res-d44@lsq.test", "resident", "unit", 101);
+    const agent = await login("agent-d44@lsq.test", "agent", "estate", null);
+    const t = (await (await post("/api/tickets", res.cookie, { title: "Lift", description: "x", unit_id: 101 })).json()) as any;
+    const org = await env.DB.prepare("INSERT INTO organizations (name, kind) VALUES ('Acme Lifts', 'contractor') RETURNING id").first<{ id: number }>();
+    await env.DB.prepare("INSERT INTO senders (match_type, match_value, org_id, status, first_seen, last_seen) VALUES ('domain', 'acme.test', ?, 'linked', 'x', 'x')").bind(org!.id).run();
+    const email = async (from: string, body: string) =>
+      (await env.DB.prepare(
+        `INSERT INTO events (subject_type, subject_id, at, actor_email, type, body, source)
+           VALUES ('ticket', ?, '2026-11-08T10:00:00Z', ?, 'comment', ?, 'email') RETURNING id`
+      ).bind(t.id, from, body).first<{ id: number }>())!.id;
+    const quote = await email("bob@acme.test", "Quote: £4,000");
+    await email("who@unknown.test", "Hello");
+    await env.MAIL.put("attachments/d44/quote.pdf", "PDF");
+    const att = (await env.DB.prepare(
+      "INSERT INTO attachments (event_id, kind, filename, content_type, size, r2_key) VALUES (?, 'file', 'quote.pdf', 'application/pdf', 3, 'attachments/d44/quote.pdf') RETURNING id"
+    ).bind(quote).first<{ id: number }>())!.id;
+
+    const bodies = async (cookie: string) => ((await (await req(`/api/tickets/${t.id}`, cookie)).json()) as any).events.map((e: any) => e.body);
+    expect(await bodies(res.cookie)).not.toContain("Quote: £4,000");
+    expect(await bodies(res.cookie)).not.toContain("Hello");
+    expect(await bodies(agent.cookie)).toEqual(expect.arrayContaining(["Quote: £4,000", "Hello"]));
+    const list = (await (await req("/api/tickets", res.cookie)).json()) as any;
+    expect(list.data.find((x: any) => x.id === t.id).events.map((e: any) => e.body)).not.toContain("Quote: £4,000");
+    const evs = (await (await req(`/api/tickets/${t.id}/events`, res.cookie)).json()) as any[];
+    expect(evs.map((e) => e.body)).not.toContain("Quote: £4,000");
+
+    expect((await req(`/api/tickets/${t.id}/attachments/${att}`, res.cookie)).status).toBe(404);
+    const ok = await req(`/api/tickets/${t.id}/attachments/${att}`, agent.cookie);
+    expect(ok.status).toBe(200);
+    await ok.arrayBuffer();
+  });
+
   it("carries the soonest running SLA as sla_due, for sla:read callers only (D36)", async () => {
     const res = await login("sla-due-res@lsq.test", "resident", "unit", 101);
     const t = (await (await post("/api/tickets", res.cookie, { title: "Lift stuck", description: "again", unit_id: 101 })).json()) as any;
