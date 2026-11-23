@@ -25,7 +25,7 @@ import { useAccounts, useBuildings, useUnits } from "../directory/api";
 import type { Event, TicketDetail } from "../../api/types";
 import { useAddComment, usePatchTicket, useTicket } from "./api";
 import { SlaPanel } from "./SlaPanel";
-import { AttendedDialog, DuplicateDialog, ScheduleDialog, StatusDialog, TriageDialog } from "./TicketActions";
+import { AttendedDialog, DuplicateDialog, ScheduleDialog, StatusDialog, TriagePanel } from "./TicketActions";
 
 const triaged = (t: TicketDetail) => !!t.events?.some((e) => e.type === "marker" && e.to_value === "triaged");
 
@@ -181,6 +181,23 @@ export function TicketDetailPage() {
   const nameOf = (e: Event): string =>
     e.actor_name ?? accounts.data?.find((a) => a.id === e.actor_id)?.name ?? e.actor_email ?? "system";
 
+  const composer = (
+    <Can perm="ticket:comment">
+      <div className={s.composer}>
+        <Field label="Add a comment" style={{ alignSelf: "stretch" }}>
+          <Textarea value={comment} onChange={(_, d) => setComment(d.value)} rows={3} />
+        </Field>
+        <Button
+          appearance="primary"
+          disabled={addComment.isPending || !comment}
+          onClick={() => addComment.mutate(comment, { onSuccess: () => setComment("") })}
+        >
+          Comment
+        </Button>
+      </div>
+    </Can>
+  );
+
   return (
     <div>
       <Button appearance="subtle" onClick={() => navigate("/tickets")}>← Tickets</Button>
@@ -205,20 +222,12 @@ export function TicketDetailPage() {
                     : <EventLine key={e.id} e={e} name={nameOf(e)} />,
                 )}
 
-                <Can perm="ticket:comment">
-                  <div className={s.composer}>
-                    <Field label="Add a comment" style={{ alignSelf: "stretch" }}>
-                      <Textarea value={comment} onChange={(_, d) => setComment(d.value)} rows={3} />
-                    </Field>
-                    <Button
-                      appearance="primary"
-                      disabled={addComment.isPending || !comment}
-                      onClick={() => addComment.mutate(comment, { onSuccess: () => setComment("") })}
-                    >
-                      Comment
-                    </Button>
-                  </div>
-                </Can>
+                {/* Staff triage before anything else; the triage carries the comment (D40). */}
+                {!isTerminal(t.status) && !triaged(t) ? (
+                  <Can perm="ticket:update" fallback={composer}>
+                    <TriagePanel t={t} />
+                  </Can>
+                ) : composer}
               </div>
 
               <div className={s.side}>
@@ -230,10 +239,8 @@ export function TicketDetailPage() {
                       <Badge appearance="filled" color={isTerminal(t.status) ? "success" : "brand"}>
                         {humanize(t.status!)}
                       </Badge>
-                      {!isTerminal(t.status) && (
-                        <Can perm="ticket:update">
-                          {triaged(t) ? <StatusDialog id={id} current={t.status!} /> : <TriageDialog t={t} />}
-                        </Can>
+                      {!isTerminal(t.status) && triaged(t) && (
+                        <Can perm="ticket:update"><StatusDialog id={id} current={t.status!} /></Can>
                       )}
                     </div>
                   </div>

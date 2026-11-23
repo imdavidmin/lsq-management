@@ -99,10 +99,15 @@ push runs the FE build then deploys each Worker — no separate Pages project.
 npm install              # root; hoists all workspaces
 npm run migrate:local    # apply migrations/ to the local D1
 npm run seed:dev         # optional: demo accounts, orgs, senders (server/dev-seed.sql)
+npm run bootstrap:local  # first admin from ADMIN_EMAIL / ADMIN_NAME in .env
 mkdir -p web/dist        # wrangler + the test pool expect it; `npm --workspace web run build` fills it
 npm run be               # API Worker (wrangler dev)
 npm run fe               # Vite frontend (second terminal)
 ```
+
+Deploys run the same bootstrap against the remote D1 from the `ADMIN_EMAIL` /
+`ADMIN_NAME` repo secrets, so a wiped D1 keeps one admin who can sign in.
+`npm run bootstrap:remote` does it by hand from `.env`.
 
 **Local login.** Sign in with an email code, as on the live site. Create a
 `.dev.vars` in the repo root (gitignored); it can be empty:

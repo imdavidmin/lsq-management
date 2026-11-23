@@ -1,5 +1,9 @@
 import { useState } from "react";
 import {
+  Accordion,
+  AccordionHeader,
+  AccordionItem,
+  AccordionPanel,
   Button,
   Dialog,
   DialogActions,
@@ -28,6 +32,7 @@ import { useAddComment, useAddMarker, usePatchTicket, useSchedule, useTriage } f
 
 const useStyles = makeStyles({
   dialogFields: { display: "flex", flexDirection: "column", gap: tokens.spacingVerticalM },
+  confirm: { alignSelf: "flex-start" },
 });
 
 // Icon-triggered dialog: pick a new status + required comment, then commit.
@@ -111,14 +116,14 @@ export function AttendedDialog({ id }: { id: number }) {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-// First decision on a ticket: category, contractor, and the next step (D40).
-export function TriageDialog({ t }: { t: TicketDetail }) {
+// First decision on a ticket: category, contractor, the next step and a comment (D40).
+// Sits in place of the comment box until the ticket is triaged.
+export function TriagePanel({ t }: { t: TicketDetail }) {
   const s = useStyles();
   const triage = useTriage(t.id!);
   const addComment = useAddComment(t.id!);
-  const [open, setOpen] = useState(false);
-  const [category, setCategory] = useState("");
-  const [contractor, setContractor] = useState(false);
+  const [category, setCategory] = useState(t.category ?? "");
+  const [contractor, setContractor] = useState(!!t.needs_contractor);
   const [step, setStep] = useState<"status" | "date">("status");
   const [status, setStatus] = useState("");
   const [date, setDate] = useState("");
@@ -136,86 +141,70 @@ export function TriageDialog({ t }: { t: TicketDetail }) {
         needs_contractor: contractor,
         ...(step === "status" ? { status } : { date, note }),
       });
-      setOpen(false);
     } catch {
       // shown via triage.error / addComment.error
     }
   };
 
-  const onOpenChange = (isOpen: boolean) => {
-    setOpen(isOpen);
-    if (!isOpen) return;
-    setCategory(t.category ?? "");
-    setContractor(!!t.needs_contractor);
-    triage.reset();
-    addComment.reset();
-  };
-
   return (
-    <Dialog open={open} onOpenChange={(_, d) => onOpenChange(d.open)}>
-      <Button appearance="primary" size="small" onClick={() => setOpen(true)}>Triage</Button>
-      <DialogSurface>
-        <DialogBody>
-          <DialogTitle>Triage ticket</DialogTitle>
-          <DialogContent className={s.dialogFields}>
-            <Field label="Category" required>
+    <Accordion collapsible>
+      <AccordionItem value="triage">
+        <AccordionHeader>Triage this ticket</AccordionHeader>
+        <AccordionPanel className={s.dialogFields}>
+          <Field label="Category" required>
+            <Dropdown
+              value={category ? humanize(category) : ""}
+              selectedOptions={category ? [category] : []}
+              onOptionSelect={(_, d) => setCategory(d.optionValue ?? "")}
+            >
+              {CATEGORIES.map((c) => <Option key={c} value={c}>{humanize(c)}</Option>)}
+              {category && !CATEGORIES.includes(category as (typeof CATEGORIES)[number]) && (
+                <Option value={category}>{humanize(category)}</Option>
+              )}
+            </Dropdown>
+          </Field>
+          <Field label="Needs a contractor?">
+            <RadioGroup layout="horizontal" value={contractor ? "yes" : "no"} onChange={(_, d) => setContractor(d.value === "yes")}>
+              <Radio value="yes" label="Yes" />
+              <Radio value="no" label="No" />
+            </RadioGroup>
+          </Field>
+          <Field label="Next step">
+            <RadioGroup layout="horizontal" value={step} onChange={(_, d) => setStep(d.value as "status" | "date")}>
+              <Radio value="status" label="Change status" />
+              <Radio value="date" label="Schedule action" />
+            </RadioGroup>
+          </Field>
+          {step === "status" ? (
+            <Field label="New status" required>
               <Dropdown
-                value={category ? humanize(category) : ""}
-                selectedOptions={category ? [category] : []}
-                onOptionSelect={(_, d) => setCategory(d.optionValue ?? "")}
+                value={status ? humanize(status) : ""}
+                selectedOptions={status ? [status] : []}
+                onOptionSelect={(_, d) => setStatus(d.optionValue ?? "")}
               >
-                {CATEGORIES.map((c) => <Option key={c} value={c}>{humanize(c)}</Option>)}
-                {category && !CATEGORIES.includes(category as (typeof CATEGORIES)[number]) && (
-                  <Option value={category}>{humanize(category)}</Option>
-                )}
+                {STATUSES.filter((st) => st !== "open" && st !== t.status).map((st) => <Option key={st} value={st}>{humanize(st)}</Option>)}
               </Dropdown>
             </Field>
-            <Field label="Needs a contractor?">
-              <RadioGroup layout="horizontal" value={contractor ? "yes" : "no"} onChange={(_, d) => setContractor(d.value === "yes")}>
-                <Radio value="yes" label="Yes" />
-                <Radio value="no" label="No" />
-              </RadioGroup>
-            </Field>
-            <Field label="Next step">
-              <RadioGroup layout="horizontal" value={step} onChange={(_, d) => setStep(d.value as "status" | "date")}>
-                <Radio value="status" label="Change status" />
-                <Radio value="date" label="Schedule action" />
-              </RadioGroup>
-            </Field>
-            {step === "status" ? (
-              <Field label="New status" required>
-                <Dropdown
-                  value={status ? humanize(status) : ""}
-                  selectedOptions={status ? [status] : []}
-                  onOptionSelect={(_, d) => setStatus(d.optionValue ?? "")}
-                >
-                  {STATUSES.filter((st) => st !== "open" && st !== t.status).map((st) => <Option key={st} value={st}>{humanize(st)}</Option>)}
-                </Dropdown>
+          ) : (
+            <>
+              <Field label="Date of next action" required>
+                <Input type="date" min={today()} value={date} onChange={(_, d) => setDate(d.value)} />
               </Field>
-            ) : (
-              <>
-                <Field label="Date of next action" required>
-                  <Input type="date" min={today()} value={date} onChange={(_, d) => setDate(d.value)} />
-                </Field>
-                <Field label="What will happen" required>
-                  <Input value={note} onChange={(_, d) => setNote(d.value)} />
-                </Field>
-              </>
-            )}
-            <Field label="Comment" required>
-              <Textarea value={comment} onChange={(_, d) => setComment(d.value)} rows={3} />
-            </Field>
-            {(triage.error ?? addComment.error) && (
-              <MessageBar intent="error"><MessageBarBody>{(triage.error ?? addComment.error)!.message}</MessageBarBody></MessageBar>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button appearance="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button appearance="primary" disabled={busy || !ready} onClick={commit}>Confirm</Button>
-          </DialogActions>
-        </DialogBody>
-      </DialogSurface>
-    </Dialog>
+              <Field label="What will happen" required>
+                <Input value={note} onChange={(_, d) => setNote(d.value)} />
+              </Field>
+            </>
+          )}
+          <Field label="Comment" required>
+            <Textarea value={comment} onChange={(_, d) => setComment(d.value)} rows={3} />
+          </Field>
+          {(triage.error ?? addComment.error) && (
+            <MessageBar intent="error"><MessageBarBody>{(triage.error ?? addComment.error)!.message}</MessageBarBody></MessageBar>
+          )}
+          <Button appearance="primary" className={s.confirm} disabled={busy || !ready} onClick={commit}>Triage</Button>
+        </AccordionPanel>
+      </AccordionItem>
+    </Accordion>
   );
 }
 

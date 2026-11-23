@@ -28,4 +28,8 @@ jobs:
       - run: npm --workspace web run build # tests load wrangler.jsonc, which needs web/dist
       - run: npm test
       - run: npm run migrate:remote
+      - run: npm run bootstrap:remote # first admin from repo secrets; no-op once present
+        env:
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_NAME: ${{ secrets.ADMIN_NAME }}
       - run: npm run deploy
