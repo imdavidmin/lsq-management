@@ -304,7 +304,7 @@ function NewUserDialog() {
             {needsOrg && (
               <Field label="Organization" required>
                 <Dropdown
-                  placeholder="Select contractor"
+                  placeholder="Select third party"
                   value={orgs.data?.find((o) => o.id === orgId)?.name ?? ""}
                   selectedOptions={orgId != null ? [String(orgId)] : []}
                   onOptionSelect={(_, d) => setOrgId(Number(d.optionValue))}
@@ -525,7 +525,7 @@ function NewOrgDialog() {
   return (
     <FormDialog
       trigger={<Button appearance="primary" icon={<Add20Regular />}>Add organization</Button>}
-      title="Add a contractor"
+      title="Add a third party"
       submitLabel="Add"
       disabled={!name}
       pending={create.isPending}

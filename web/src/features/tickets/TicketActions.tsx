@@ -84,7 +84,7 @@ export function StatusDialog({ id, current }: { id: number; current: TicketStatu
   );
 }
 
-// On-site team records a contractor visit; its notes feed the attendance SLA (D21).
+// On-site team records a third-party visit; its notes feed the attendance SLA (D21).
 export function AttendedDialog({ id }: { id: number }) {
   const s = useStyles();
   const mark = useAddMarker(id);
@@ -95,10 +95,10 @@ export function AttendedDialog({ id }: { id: number }) {
 
   return (
     <Dialog open={open} onOpenChange={(_, d) => setOpen(d.open)}>
-      <Button appearance="secondary" onClick={() => setOpen(true)}>Contractor attended</Button>
+      <Button appearance="secondary" onClick={() => setOpen(true)}>Third party attended</Button>
       <DialogSurface>
         <DialogBody>
-          <DialogTitle>Contractor attended</DialogTitle>
+          <DialogTitle>Third party attended</DialogTitle>
           <DialogContent className={s.dialogFields}>
             <Field label="What was done" required>
               <Textarea value={notes} onChange={(_, d) => setNotes(d.value)} rows={3} />
@@ -116,7 +116,7 @@ export function AttendedDialog({ id }: { id: number }) {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-// First decision on a ticket: category, contractor, the next step and a comment (D40).
+// First decision on a ticket: category, third party, the next step and a comment (D40).
 // Sits in place of the comment box until the ticket is triaged.
 export function TriagePanel({ t }: { t: TicketDetail }) {
   const s = useStyles();
@@ -163,7 +163,7 @@ export function TriagePanel({ t }: { t: TicketDetail }) {
               )}
             </Dropdown>
           </Field>
-          <Field label="Needs a contractor?">
+          <Field label="Involves a third party?">
             <RadioGroup layout="horizontal" value={contractor ? "yes" : "no"} onChange={(_, d) => setContractor(d.value === "yes")}>
               <Radio value="yes" label="Yes" />
               <Radio value="no" label="No" />

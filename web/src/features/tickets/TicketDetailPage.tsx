@@ -20,14 +20,12 @@ import { ArrowSyncRegular, AttachRegular, CopyRegular, MailRegular } from "@flue
 import { Can } from "../../auth/Can";
 import { Query } from "../../lib/Query";
 import { Stamp } from "../../components/Stamp";
-import { CATEGORIES, humanize, isTerminal, roleColor } from "../../components/ticketDisplay";
+import { CATEGORIES, humanize, isTerminal, isTriaged, roleColor } from "../../components/ticketDisplay";
 import { useAccounts, useBuildings, useUnits } from "../directory/api";
 import type { Event, TicketDetail } from "../../api/types";
 import { useAddComment, usePatchTicket, useTicket } from "./api";
 import { SlaPanel } from "./SlaPanel";
 import { AttendedDialog, DuplicateDialog, ScheduleDialog, StatusDialog, TriagePanel } from "./TicketActions";
-
-const triaged = (t: TicketDetail) => !!t.events?.some((e) => e.type === "marker" && e.to_value === "triaged");
 
 const useStyles = makeStyles({
   grid: { display: "grid", gridTemplateColumns: "1fr 320px", gap: tokens.spacingHorizontalXXL, alignItems: "start" },
@@ -118,7 +116,7 @@ function eventDetail(e: Event): string {
       if (e.actor_role === "system" && e.to_value === "open") return "moved the ticket back to the agent after a reply";
       return withBody(`changed status ${e.from_value ? `from ${humanize(e.from_value)} ` : ""}to ${humanize(e.to_value ?? "")}`);
     case "schedule": return withBody(`scheduled the next action for ${e.to_value}`);
-    case "flag": return e.to_value === "needs_contractor:1" ? "marked contractor needed" : "marked contractor not needed";
+    case "flag": return e.to_value === "needs_contractor:1" ? "marked as involving a third party" : "marked as not involving a third party";
     case "duplicate": return `marked this a duplicate of #${e.to_value}`;
     case "marker": return withBody(`marked: ${humanize(e.to_value)}`);
     default: return `${e.type}${e.from_value || e.to_value ? `: ${e.from_value ?? ""} → ${e.to_value ?? ""}` : ""}`;
@@ -223,7 +221,7 @@ export function TicketDetailPage() {
                 )}
 
                 {/* Staff triage before anything else; the triage carries the comment (D40). */}
-                {!isTerminal(t.status) && !triaged(t) ? (
+                {!isTerminal(t.status) && !isTriaged(t) ? (
                   <Can perm="ticket:update" fallback={composer}>
                     <TriagePanel t={t} />
                   </Can>
@@ -239,7 +237,7 @@ export function TicketDetailPage() {
                       <Badge appearance="filled" color={isTerminal(t.status) ? "success" : "brand"}>
                         {humanize(t.status!)}
                       </Badge>
-                      {!isTerminal(t.status) && triaged(t) && (
+                      {!isTerminal(t.status) && isTriaged(t) && (
                         <Can perm="ticket:update"><StatusDialog id={id} current={t.status!} /></Can>
                       )}
                     </div>
@@ -269,11 +267,11 @@ export function TicketDetailPage() {
                       </Dropdown>
                     </Can>
                   </div>
-                  {!isTerminal(t.status) && triaged(t) && (
+                  {!isTerminal(t.status) && isTriaged(t) && (
                     <Can perm="ticket:update">
                       <Switch
                         className={s.field}
-                        label="Needs a contractor"
+                        label="Involves a third party"
                         checked={!!t.needs_contractor}
                         disabled={patch.isPending}
                         onChange={(_, d) => patch.mutate({ needs_contractor: d.checked })}

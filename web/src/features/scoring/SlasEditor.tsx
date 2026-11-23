@@ -59,7 +59,7 @@ const KIND_LABEL: Record<SlaKind, string> = {
   event_by: "an event by",
   marker: "marker",
   scheduled: "scheduled date",
-  flag: "contractor flag",
+  flag: "third-party flag",
   next_step: "next step",
 };
 
@@ -74,7 +74,7 @@ function point(kind: SlaKind, value: string | null): string {
     case "marker": return `the "${v}" marker`;
     case "ticket_created": return "the ticket being created";
     case "scheduled": return "the scheduled date";
-    case "flag": return "the contractor flag being set";
+    case "flag": return "the third-party flag being set";
     case "next_step": return "a next step (status change or new date)";
   }
 }
@@ -82,8 +82,8 @@ function point(kind: SlaKind, value: string | null): string {
 const appliesTo = (s: SlaDraft) =>
   [
     s.category ? `${words(s.category)} tickets` : "all tickets",
-    s.needs_contractor === true && "needing a contractor",
-    s.needs_contractor === false && "not needing a contractor",
+    s.needs_contractor === true && "involving a third party",
+    s.needs_contractor === false && "not involving a third party",
   ]
     .filter(Boolean)
     .join(" ");
@@ -152,7 +152,7 @@ function SlaDrawer({ draft, onClose, canEdit }: { draft: SlaDraft | null; onClos
     );
   };
 
-  const contractorLabel = { any: "any", yes: "needing a contractor", no: "not needing a contractor" };
+  const contractorLabel = { any: "any", yes: "involving a third party", no: "not involving a third party" };
   const contractorKey = form.needs_contractor == null ? "any" : form.needs_contractor ? "yes" : "no";
 
   return (

@@ -99,7 +99,7 @@ export function TicketCard({
           {ticket.category ? humanize(ticket.category) : "uncategorised"}
         </span>
         <span className={s.tags}>
-          {ticket.needs_contractor && <span className={s.contractor}>CONTRACTOR</span>}
+          {ticket.needs_contractor && <span className={s.contractor}>THIRD PARTY</span>}
           {ticket.sla_due && (
             <Badge size="small" appearance="filled" color={slaDueColor(ticket.sla_due.remaining_days)} title={ticket.sla_due.name}>
               {slaDueLabel(ticket.sla_due.remaining_days)}

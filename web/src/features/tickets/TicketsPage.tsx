@@ -19,6 +19,7 @@ import { AgGridReact } from "ag-grid-react";
 ModuleRegistry.registerModules([AllCommunityModule]);
 import {
   CheckmarkCircle20Filled,
+  ClipboardTaskListLtr20Regular,
   Circle20Regular,
   Clock20Regular,
   Warning20Filled,
@@ -27,7 +28,7 @@ import { Can } from "../../auth/Can";
 import { Query } from "../../lib/Query";
 import type { Account, TicketDetail } from "../../api/types";
 import { CollapsibleGroup, type GroupTone } from "../../components/CollapsibleGroup";
-import { CATEGORIES, humanize, isTerminal, slaDueLabel } from "../../components/ticketDisplay";
+import { CATEGORIES, humanize, isTerminal, isTriaged, slaDueLabel } from "../../components/ticketDisplay";
 import { TicketCard } from "../../components/TicketCard";
 import { TicketDrawer } from "../../components/TicketDrawer";
 import { useAccounts, useBuildings } from "../directory/api";
@@ -36,7 +37,7 @@ import { useTickets } from "./api";
 
 // Working days left on the soonest SLA at or below which a ticket is urgent (D36).
 const URGENT_DAYS = 1;
-type Bucket = "urgent" | "open" | "pending" | "completed";
+type Bucket = "triage" | "urgent" | "open" | "pending" | "completed";
 
 // case- and accent-insensitive; "José" matches "jose".
 const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
@@ -47,17 +48,19 @@ function lastActivityMs(t: TicketDetail): number {
   return new Date((evs.length ? evs[evs.length - 1].at : t.created_at) ?? "").getTime();
 }
 
-// resolved/closed → completed; else SLA breached or nearly due → urgent; else by status.
+// resolved/closed → completed; untriaged → triage; else SLA breached or nearly due → urgent; else by status.
 function bucketOf(t: TicketDetail): Bucket {
   if (isTerminal(t.status)) return "completed";
+  if (!isTriaged(t)) return "triage";
   if (t.sla_due && t.sla_due.remaining_days <= URGENT_DAYS) return "urgent";
   return t.status === "open" ? "open" : "pending";
 }
 
 const GROUPS: { key: Bucket; title: string; tone: GroupTone; icon: ReactNode; defaultOpen: boolean }[] = [
+  { key: "triage", title: "Pending triage — category, third party and next step", tone: "neutral", icon: <ClipboardTaskListLtr20Regular />, defaultOpen: true },
   { key: "urgent", title: "Urgent — SLA breached or due within 1 working day", tone: "danger", icon: <Warning20Filled />, defaultOpen: true },
   { key: "open", title: "Open — requires response", tone: "neutral", icon: <Circle20Regular />, defaultOpen: true },
-  { key: "pending", title: "Pending — with resident, board or 3rd party", tone: "warning", icon: <Clock20Regular />, defaultOpen: true },
+  { key: "pending", title: "Pending — with resident, board or third party", tone: "warning", icon: <Clock20Regular />, defaultOpen: true },
   { key: "completed", title: "Completed", tone: "success", icon: <CheckmarkCircle20Filled />, defaultOpen: false },
 ];
 
@@ -136,9 +139,9 @@ export function TicketsPage() {
 
           const attention = res.data.filter((t) => {
             const b = bucketOf(t);
-            return b === "open" || b === "urgent";
+            return b === "triage" || b === "open" || b === "urgent";
           }).length;
-          const atRisk = res.data.filter((t) => bucketOf(t) === "urgent").length;
+          const atRisk = res.data.filter((t) => !isTerminal(t.status) && t.sla_due && t.sla_due.remaining_days <= URGENT_DAYS).length;
 
           return (
             <>
@@ -146,7 +149,7 @@ export function TicketsPage() {
                 <Card className={`${s.stat} ${s.attention}`}>
                   <Text className={s.statNum}>{attention}</Text>
                   <Text weight="semibold">Need your attention</Text>
-                  <Text size={200}>Open or urgent tickets awaiting a response.</Text>
+                  <Text size={200}>Tickets to triage, open or urgent.</Text>
                 </Card>
                 <Card className={`${s.stat} ${s.sla}`}>
                   <Text className={s.statNum}>{atRisk}</Text>
@@ -237,7 +240,7 @@ export function TicketsPage() {
 function Buckets({ tickets, onOpen, onExpand }: { tickets: TicketDetail[]; onOpen: (t: TicketDetail) => void; onExpand: (t: TicketDetail) => void }) {
   const s = useStyles();
   const byBucket = useMemo(() => {
-    const m: Record<Bucket, TicketDetail[]> = { urgent: [], open: [], pending: [], completed: [] };
+    const m: Record<Bucket, TicketDetail[]> = { triage: [], urgent: [], open: [], pending: [], completed: [] };
     for (const t of tickets) m[bucketOf(t)].push(t);
     return m;
   }, [tickets]);

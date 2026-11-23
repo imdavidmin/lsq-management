@@ -41,10 +41,14 @@ export function categoryColor(category?: string | null): { bg: string; fg: strin
   );
 }
 
-export const humanize = (s?: string | null) => (s ?? "").replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+// "3rd" reads as "third" in the UI ("Pending third party").
+export const humanize = (s?: string | null) => (s ?? "").replace(/_/g, " ").replace(/\b3rd\b/, "third").replace(/^\w/, (c) => c.toUpperCase());
 
 // A ticket in a terminal state (done). Used for bucketing and badge colour.
 export const isTerminal = (status?: string | null) => status === "resolved" || status === "closed";
+
+// Triaged once a `triaged` marker exists (D40).
+export const isTriaged = (t: { events?: Event[] }) => !!t.events?.some((e) => e.type === "marker" && e.to_value === "triaged");
 
 // Short label for a ticket's latest event — drives the card footer.
 export function lastEventLabel(e?: Event): string {
@@ -56,7 +60,7 @@ export function lastEventLabel(e?: Event): string {
     case "marker": return humanize(e.to_value);
     case "attest": return "Attested";
     case "schedule": return "Scheduled";
-    case "flag": return e.to_value === "needs_contractor:1" ? "Contractor needed" : "Contractor not needed";
+    case "flag": return e.to_value === "needs_contractor:1" ? "Third party involved" : "No third party";
     case "duplicate": return "Marked duplicate";
     case "chase": return "Chased";
     default: return humanize(e.type ?? "Updated");
