@@ -14,4 +14,5 @@ web/dist
 *.log
 .DS_Store
 
-scripts
+# board accounts for bootstrap-board.mjs (personal emails)
+scripts/board.local.json
